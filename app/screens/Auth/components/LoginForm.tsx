@@ -26,24 +26,8 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
   const [errors, setErrors] = useState({ email: "", password: "" });
 
   const validate = (): boolean => {
-    let valid = true;
-    const newErrors = { email: "", password: "" };
-
-    if (!email.trim()) {
-      newErrors.email = "Email or phone is required.";
-      valid = false;
-    }
-
-    if (!password.trim()) {
-      newErrors.password = "Password is required.";
-      valid = false;
-    } else if (password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters.";
-      valid = false;
-    }
-
-    setErrors(newErrors);
-    return valid;
+    // Validation bypassed for UI testing
+    return true;
   };
 
   const handleSubmit = () => {
@@ -153,8 +137,11 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
 
         <View style={styles.signUpRow}>
           <Text style={styles.signUpGray}>Don&apos;t have an account? </Text>
-          <TouchableOpacity>
-            <Text style={styles.linkBlue}>Contact Admin</Text>
+          <TouchableOpacity 
+            onPress={() => router.push("/screens/Auth/SignupScreen" as any)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.linkBlue}>Sign Up</Text>
           </TouchableOpacity>
         </View>
       </View>

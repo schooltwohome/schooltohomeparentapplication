@@ -5,23 +5,14 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import LoginHeader from "./components/LoginHeader";
-import LoginForm from "./components/LoginForm";
+import SignupForm from "./components/SignupForm";
 
-/**
- * LoginScreen
- *
- * - Uses KeyboardAwareScrollView so inputs are always visible when keyboard opens.
- * - Wraps content in TouchableWithoutFeedback to dismiss keyboard on outside tap.
- *
- * NOTE: For Android, add the following to your AndroidManifest.xml activity tag:
- *   android:windowSoftInputMode="adjustResize"
- */
-export default function LoginScreen() {
+export default function SignupScreen() {
   const router = useRouter();
 
-  const handleLogin = () => {
-    // Authentication logic bypassed for UI testing
-    console.log("Login submitted - Navigating to Home");
+  const handleSignup = () => {
+    // Signup logic bypassed for UI testing
+    console.log("Signup submitted - Navigating to Home");
     router.replace("/home" as any);
   };
 
@@ -31,25 +22,19 @@ export default function LoginScreen() {
       <Stack.Screen 
         options={{ 
           headerShown: false,
-          animation: "fade" // Smooth symmetric transition
+          animation: "fade"
         }} 
       />
 
-
-      {/* Dismiss keyboard when tapping outside inputs */}
-      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <KeyboardAwareScrollView
           style={{ flex: 1, backgroundColor: "#F8FAFC" }}
           contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }}
           enableOnAndroid={true}
-          enableAutomaticScroll={true}
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          extraScrollHeight={20}
-          extraHeight={120}
         >
           <LoginHeader />
-          <LoginForm onLogin={handleLogin} />
+          <SignupForm onSignup={handleSignup} />
         </KeyboardAwareScrollView>
       </TouchableWithoutFeedback>
     </SafeAreaView>
