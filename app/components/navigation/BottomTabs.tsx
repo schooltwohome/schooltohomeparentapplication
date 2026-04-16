@@ -21,7 +21,7 @@ export default function BottomTabs({ activeTab, onTabPress }: BottomTabsProps) {
   return (
     <View style={[
       styles.container, 
-      { paddingBottom: Math.max(insets.bottom, 16) }
+      { paddingBottom: Math.max(insets.bottom, 10) }
     ]}>
       <View style={styles.content}>
         {tabs.map((tab) => (
@@ -46,28 +46,31 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "transparent",
     paddingHorizontal: 16,
+    // Extra top padding so the raised icon isn't clipped
+    paddingTop: 20,
   },
   content: {
     flexDirection: "row",
     backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    height: 72,
+    borderRadius: 28,
+    height: 68,
     alignItems: "center",
     justifyContent: "space-around",
-    paddingHorizontal: 8,
-    // Modern shadow
+    paddingHorizontal: 12,
+    // Overflow visible so raised icon shows above the bar
+    overflow: "visible",
     ...Platform.select({
       ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 10 },
+        shadowColor: "#1E293B",
+        shadowOffset: { width: 0, height: 6 },
         shadowOpacity: 0.1,
-        shadowRadius: 10,
+        shadowRadius: 20,
       },
       android: {
-        elevation: 10,
+        elevation: 12,
       },
     }),
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
+    borderWidth: 0.5,
+    borderColor: "rgba(226, 232, 240, 0.5)",
   },
 });
