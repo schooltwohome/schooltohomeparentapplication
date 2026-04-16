@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { Marker } from "react-native-maps";
+import MapViewDirections from "react-native-maps-directions";
 import { Bus, MapPin, School } from "lucide-react-native";
 
 export default function LiveMap() {
@@ -29,12 +30,14 @@ export default function LiveMap() {
           longitudeDelta: 0.02,
         }}
       >
-        {/* Route Polyline */}
-        <Polyline
-          coordinates={routeCoords}
-          strokeColor="#3B82F6" // Tailwind Blue 500
+        {/* Route Directions (Snaps to roads via Google Maps API) */}
+        <MapViewDirections
+          origin={busCoords}
+          destination={schoolCoords}
+          waypoints={[stop1Coords]}
+          apikey={"YOUR_GOOGLE_MAPS_APIKEY_HERE"} // IMPORTANT: Replace this with your Google Maps API Key
           strokeWidth={4}
-          lineDashPattern={[1]}
+          strokeColor="#3B82F6" // Tailwind Blue 500
         />
 
         {/* Bus Stop Marker */}
