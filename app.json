@@ -38,6 +38,14 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow SchoolToHome to use your location to track your relative distance to the school bus.",
+          "locationAlwaysPermission": "Allow SchoolToHome to use your location to track your relative distance to the school bus.",
+          "locationWhenInUsePermission": "Allow SchoolToHome to use your location to track your relative distance to the school bus."
+        }
       ]
     ],
     "experiments": {
