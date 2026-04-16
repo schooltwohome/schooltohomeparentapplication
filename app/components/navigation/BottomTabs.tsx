@@ -48,6 +48,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     // Extra top padding so the raised icon isn't clipped
     paddingTop: 20,
+    zIndex: 1000,
   },
   content: {
     flexDirection: "row",
