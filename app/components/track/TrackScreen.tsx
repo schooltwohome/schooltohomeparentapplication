@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { View, StyleSheet, Text } from "react-native";
 import * as Location from "expo-location";
 import LiveMap from "./LiveMap";
-import BusLiveStatus from "./BusLiveStatus";
+import BusStatusPanel from "./status/BusStatusPanel";
 import PermissionPrompt from "./PermissionPrompt";
 
 export default function TrackScreen() {
@@ -52,7 +52,7 @@ export default function TrackScreen() {
   return (
     <View style={styles.container}>
       <LiveMap />
-      <BusLiveStatus />
+      <BusStatusPanel />
     </View>
   );
 }
