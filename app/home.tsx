@@ -7,6 +7,7 @@ import HomeHeader from "./components/home/HomeHeader";
 import BottomTabs from "./components/navigation/BottomTabs";
 import HomeDashboard from "./components/home/HomeDashboard";
 import TrackScreen from "./components/track/TrackScreen";
+import AlertsScreen from "./components/alerts/AlertsScreen";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function HomeScreen() {
       <View style={styles.contentContainer}>
         {activeTab === "home" && <HomeDashboard />}
         {activeTab === "track" && <TrackScreen />}
+        {activeTab === "alerts" && <AlertsScreen />}
       </View>
 
       <BottomTabs
