@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import { StyleSheet, View, Text } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
-import { Bus, MapPin } from "lucide-react-native";
 import type { TrackingSegment } from "../../../services/parentApi";
 
 type Coord = { latitude: number; longitude: number };
@@ -109,23 +108,20 @@ export default function LiveMap({ segment, userLocation }: Props) {
         ) : null}
 
         {pickupCoord ? (
-          <Marker coordinate={pickupCoord} title={segment?.pickupStop?.name ?? "Pickup stop"}>
-            <View style={styles.stopMarker}>
-              <MapPin size={16} color="#FFFFFF" />
-            </View>
-          </Marker>
+          <Marker
+            coordinate={pickupCoord}
+            title={segment?.pickupStop?.name ?? "Pickup stop"}
+            pinColor="#6366F1"
+            tracksViewChanges={false}
+          />
         ) : null}
 
         {busCoord ? (
-          <Marker coordinate={busCoord} title="School bus">
-            <View style={styles.busMarker}>
-              <Bus size={20} color="#FFFFFF" />
-            </View>
-          </Marker>
+          <Marker coordinate={busCoord} title="School bus" pinColor="#F59E0B" tracksViewChanges={false} />
         ) : null}
 
         {userLocation ? (
-          <Marker coordinate={userLocation} title="You" pinColor="#0F172A" />
+          <Marker coordinate={userLocation} title="You" pinColor="#0F172A" tracksViewChanges={false} />
         ) : null}
       </MapView>
     </View>
@@ -158,24 +154,5 @@ const styles = StyleSheet.create({
   map: {
     width: "100%",
     height: "100%",
-  },
-  busMarker: {
-    backgroundColor: "#F59E0B",
-    padding: 8,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  stopMarker: {
-    backgroundColor: "#6366F1",
-    padding: 8,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
   },
 });
