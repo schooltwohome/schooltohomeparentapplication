@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { StyleSheet, View, Text } from "react-native";
-import MapView, { Marker, Polyline } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import type { TrackingSegment } from "../../../services/parentApi";
 
 type Coord = { latitude: number; longitude: number };
@@ -98,7 +98,7 @@ export default function LiveMap({ segment, userLocation }: Props) {
 
   return (
     <View style={styles.container}>
-      <MapView style={styles.map} initialRegion={region}>
+      <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={region}>
         {lineCoords.length === 2 ? (
           <Polyline
             coordinates={lineCoords}
