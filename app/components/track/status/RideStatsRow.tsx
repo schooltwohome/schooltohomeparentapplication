@@ -1,32 +1,68 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Activity, Clock, Navigation, Users } from "lucide-react-native";
+import type { TrackingSegment } from "../../../../services/parentApi";
 
-export default function RideStatsRow() {
+function formatStatus(segment: TrackingSegment | null): string {
+  const s = segment?.tripStatus;
+  if (!s) return "—";
+  if (s === "on_going") return "En route";
+  if (s === "scheduled") return "Scheduled";
+  if (s === "completed") return "Done";
+  if (s === "cancelled") return "Off";
+  return s.replace(/_/g, " ");
+}
+
+type Props = {
+  segment: TrackingSegment | null;
+  linkedChildrenCount: number;
+};
+
+export default function RideStatsRow({ segment, linkedChildrenCount }: Props) {
+  const dist =
+    segment?.distanceToPickupKm != null
+      ? segment.distanceToPickupKm.toFixed(1)
+      : "—";
+  const eta =
+    segment?.etaMinutes != null && segment.etaMinutes > 0
+      ? String(segment.etaMinutes)
+      : "—";
+  const speed =
+    segment?.speedKmh != null && segment.speedKmh > 0
+      ? `${Math.round(segment.speedKmh)}`
+      : "—";
+
   return (
     <View style={styles.container}>
       <View style={styles.statBox}>
         <Activity size={20} color="#10B981" />
-        <Text style={styles.statValue}>En Route</Text>
-        <Text style={styles.statLabel}>Status</Text>
+        <Text style={styles.statValue} numberOfLines={2}>
+          {formatStatus(segment)}
+        </Text>
+        <Text style={styles.statLabel}>Trip</Text>
       </View>
-      
+
       <View style={styles.statBox}>
         <Navigation size={20} color="#64748B" />
-        <Text style={styles.statValue}>2.5</Text>
-        <Text style={styles.statLabel}>km away</Text>
+        <Text style={styles.statValue}>{dist}</Text>
+        <Text style={styles.statLabel}>km to stop</Text>
+        {speed !== "—" ? (
+          <Text style={styles.micro}>{speed} km/h</Text>
+        ) : null}
       </View>
 
       <View style={styles.statBox}>
         <Clock size={20} color="#F59E0B" />
-        <Text style={styles.statValue}>8</Text>
-        <Text style={styles.statLabel}>mins ETA</Text>
+        <Text style={styles.statValue}>{eta}</Text>
+        <Text style={styles.statLabel}>min ETA</Text>
       </View>
 
       <View style={styles.statBox}>
         <Users size={20} color="#8B5CF6" />
-        <Text style={styles.statValue}>25</Text>
-        <Text style={styles.statLabel}>students</Text>
+        <Text style={styles.statValue}>
+          {linkedChildrenCount > 0 ? String(linkedChildrenCount) : "—"}
+        </Text>
+        <Text style={styles.statLabel}>linked</Text>
       </View>
     </View>
   );
@@ -49,7 +85,7 @@ const styles = StyleSheet.create({
     borderColor: "#F1F5F9",
   },
   statValue: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: "700",
     color: "#1E293B",
     marginTop: 8,
@@ -60,5 +96,10 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 2,
     textAlign: "center",
+  },
+  micro: {
+    fontSize: 10,
+    color: "#94A3B8",
+    marginTop: 4,
   },
 });

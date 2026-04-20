@@ -5,19 +5,18 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
+  ActivityIndicator,
 } from "react-native";
 import { Eye, EyeOff } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 
-
-
 interface LoginFormProps {
-  onLogin: () => void;
+  onLogin: (identifier: string, password: string) => void;
+  loading?: boolean;
 }
 
-export default function LoginForm({ onLogin }: LoginFormProps) {
+export default function LoginForm({ onLogin, loading }: LoginFormProps) {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
 
@@ -26,14 +25,20 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
   const [errors, setErrors] = useState({ email: "", password: "" });
 
   const validate = (): boolean => {
-    // Validation bypassed for UI testing
-    return true;
+    const next = { email: "", password: "" };
+    if (!email.trim()) {
+      next.email = "Email or phone is required.";
+    }
+    if (!password) {
+      next.password = "Password is required.";
+    }
+    setErrors(next);
+    return !next.email && !next.password;
   };
 
   const handleSubmit = () => {
-    if (validate()) {
-      onLogin();
-    }
+    if (!validate()) return;
+    onLogin(email.trim(), password);
   };
 
   return (
@@ -131,19 +136,22 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
 
       {/* Sign In Button */}
       <View style={styles.buttonSection}>
-        <TouchableOpacity style={styles.signInButton} onPress={handleSubmit} activeOpacity={0.85}>
-          <Text style={styles.signInText}>Sign In</Text>
+        <TouchableOpacity
+          style={[styles.signInButton, loading && styles.signInButtonDisabled]}
+          onPress={handleSubmit}
+          activeOpacity={0.85}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.signInText}>Sign In</Text>
+          )}
         </TouchableOpacity>
 
-        <View style={styles.signUpRow}>
-          <Text style={styles.signUpGray}>Don&apos;t have an account? </Text>
-          <TouchableOpacity 
-            onPress={() => router.push("/screens/Auth/SignupScreen" as any)}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Text style={styles.linkBlue}>Sign Up</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.signUpGray}>
+          Accounts are created by your school. Use the password they provided, or sign in with OTP.
+        </Text>
       </View>
     </View>
   );
@@ -237,14 +245,14 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: 0.4,
   },
-  signUpRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 16,
+  signInButtonDisabled: {
+    opacity: 0.75,
   },
   signUpGray: {
     fontSize: 13,
     color: "#64748B",
+    textAlign: "center",
+    marginTop: 16,
+    lineHeight: 18,
   },
 });

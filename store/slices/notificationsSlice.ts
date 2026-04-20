@@ -1,0 +1,158 @@
+import { createSlice, createAsyncThunk } from "@reduxjs/toolkit";
+import {
+  getParentNotifications,
+  markParentNotificationRead,
+  markAllParentNotificationsRead,
+  registerParentPushDevice,
+  type ApiNotification,
+} from "../../services/parentApi";
+import { formatRelativeTime } from "../../lib/formatRelativeTime";
+import {
+  inferNotificationRowType,
+  type NotificationRowType,
+} from "../../lib/notificationUi";
+import { logoutThunk } from "./authSlice";
+import Constants from "expo-constants";
+
+type AuthPick = { auth: { token: string | null } };
+
+export type NotificationRow = {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  type: NotificationRowType;
+  isRead: boolean;
+};
+
+function mapApi(n: ApiNotification): NotificationRow {
+  return {
+    id: String(n.id),
+    title: n.title,
+    message: n.message,
+    time: formatRelativeTime(n.created_at),
+    type: inferNotificationRowType(n.title, n.message),
+    isRead: n.is_read,
+  };
+}
+
+export const fetchNotifications = createAsyncThunk(
+  "notifications/fetch",
+  async (_, { getState, rejectWithValue }) => {
+    const token = (getState() as AuthPick).auth.token;
+    if (!token) return rejectWithValue("Not signed in");
+    try {
+      const rows = await getParentNotifications(token);
+      return rows.map(mapApi);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load notifications";
+      return rejectWithValue(msg);
+    }
+  }
+);
+
+export const markNotificationReadThunk = createAsyncThunk(
+  "notifications/markOne",
+  async (notificationId: string, { getState, rejectWithValue }) => {
+    const token = (getState() as AuthPick).auth.token;
+    if (!token) return rejectWithValue("Not signed in");
+    try {
+      await markParentNotificationRead(token, notificationId);
+      return notificationId;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Update failed";
+      return rejectWithValue(msg);
+    }
+  }
+);
+
+export const markAllNotificationsReadThunk = createAsyncThunk(
+  "notifications/markAll",
+  async (_, { getState, rejectWithValue }) => {
+    const token = (getState() as AuthPick).auth.token;
+    if (!token) return rejectWithValue("Not signed in");
+    try {
+      await markAllParentNotificationsRead(token);
+      return true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Update failed";
+      return rejectWithValue(msg);
+    }
+  }
+);
+
+export const registerPushDeviceThunk = createAsyncThunk(
+  "notifications/registerPush",
+  async (expoPushToken: string, { getState, rejectWithValue }) => {
+    const token = (getState() as AuthPick).auth.token;
+    if (!token) return rejectWithValue("Not signed in");
+    try {
+      await registerParentPushDevice(token, {
+        expoPushToken,
+        deviceType: "expo",
+        appVersion: Constants.expoConfig?.version ?? undefined,
+      });
+      return true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Device registration failed";
+      return rejectWithValue(msg);
+    }
+  }
+);
+
+type NotificationsState = {
+  items: NotificationRow[];
+  loading: boolean;
+  error: string | null;
+  pushRegistered: boolean;
+};
+
+const initialState: NotificationsState = {
+  items: [],
+  loading: false,
+  error: null,
+  pushRegistered: false,
+};
+
+const notificationsSlice = createSlice({
+  name: "notifications",
+  initialState,
+  reducers: {
+    clearNotifications(state) {
+      state.items = [];
+      state.error = null;
+    },
+  },
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchNotifications.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(fetchNotifications.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = action.payload;
+      })
+      .addCase(fetchNotifications.rejected, (state, action) => {
+        state.loading = false;
+        state.error = (action.payload as string) || "Failed";
+      })
+      .addCase(markNotificationReadThunk.fulfilled, (state, action) => {
+        const id = action.payload;
+        const row = state.items.find((i) => i.id === id);
+        if (row) row.isRead = true;
+      })
+      .addCase(markAllNotificationsReadThunk.fulfilled, (state) => {
+        state.items.forEach((i) => {
+          i.isRead = true;
+        });
+      })
+      .addCase(registerPushDeviceThunk.fulfilled, (state) => {
+        state.pushRegistered = true;
+      })
+      .addCase(logoutThunk.fulfilled, () => ({ ...initialState }));
+  },
+});
+
+export const { clearNotifications } = notificationsSlice.actions;
+export default notificationsSlice.reducer;

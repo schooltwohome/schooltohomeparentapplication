@@ -1,25 +1,39 @@
 import React from "react";
-import { TouchableWithoutFeedback, Keyboard } from "react-native";
+import { TouchableWithoutFeedback, Keyboard, Alert } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import LoginHeader from "./components/LoginHeader";
 import OTPLoginForm from "./components/OTPLoginForm";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import {
+  loginWithOtpThunk,
+  clearError,
+} from "../../../store/slices/authSlice";
 
 /**
  * OTPLoginScreen
- * 
- * - Handles OTP-based authentication flow.
- * - Reuses LoginHeader for UI consistency.
+ *
+ * - Phone + OTP via POST /api/v1/parents/send-otp and /verify-otp (matches backend).
  */
 export default function OTPLoginScreen() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const { error } = useAppSelector((s) => s.auth);
 
-  const handleOTPLogin = (email: string, otp: string) => {
-    // OTP Authentication logic can be added here
-    console.log("OTP Login submitted", { email, otp });
-    // router.replace("/home");
+  React.useEffect(() => {
+    if (error) {
+      Alert.alert("OTP", error);
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
+
+  const handleOTPLogin = async (phone: string, otp: string) => {
+    const result = await dispatch(loginWithOtpThunk({ phone, otp }));
+    if (loginWithOtpThunk.fulfilled.match(result)) {
+      router.replace("/home" as any);
+    }
   };
 
   return (

@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Bell } from "lucide-react-native";
 import NotificationModal from "./NotificationModal";
+import { useAppSelector } from "../../../store/hooks";
+import { inferModalType } from "../../../lib/notificationUi";
 
 interface HomeHeaderProps {
   greeting: string;
@@ -10,35 +12,26 @@ interface HomeHeaderProps {
 
 export default function HomeHeader({ greeting, userName }: HomeHeaderProps) {
   const [isModalVisible, setIsModalVisible] = useState(false);
-  
-  // Mock notification count
-  const notificationCount = 12;
+  const items = useAppSelector((s) => s.notifications.items);
 
-  const mockNotifications = [
-    {
-      id: "1",
-      title: "Bus arriving soon",
-      message: "Bus B-12 is 2 stops away from your location.",
-      time: "2 mins ago",
-      type: "info" as const,
-    },
-    {
-      id: "2",
-      title: "Attendance Marked",
-      message: "Aryan has reached the school safely.",
-      time: "1 hour ago",
-      type: "success" as const,
-    },
-    {
-      id: "3",
-      title: "Route Update",
-      message: "Minor delay on Route 4 due to traffic congestion.",
-      time: "2 hours ago",
-      type: "alert" as const,
-    },
-  ];
+  const unreadCount = useMemo(
+    () => items.filter((n) => !n.isRead).length,
+    [items]
+  );
 
-  const displayCount = notificationCount > 9 ? "9+" : notificationCount.toString();
+  const modalNotifications = useMemo(
+    () =>
+      items.slice(0, 12).map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        time: n.time,
+        type: inferModalType(n.title, n.message),
+      })),
+    [items]
+  );
+
+  const displayCount = unreadCount > 9 ? "9+" : unreadCount.toString();
 
   return (
     <View style={styles.header}>
@@ -46,12 +39,12 @@ export default function HomeHeader({ greeting, userName }: HomeHeaderProps) {
         <Text style={styles.greeting}>{greeting}</Text>
         <Text style={styles.subGreeting}>{userName}</Text>
       </View>
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.notificationBtn}
         onPress={() => setIsModalVisible(true)}
       >
         <Bell size={24} color="#0F172A" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} />
-        {notificationCount > 0 && (
+        {unreadCount > 0 && (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{displayCount}</Text>
           </View>
@@ -61,7 +54,7 @@ export default function HomeHeader({ greeting, userName }: HomeHeaderProps) {
       <NotificationModal
         isVisible={isModalVisible}
         onClose={() => setIsModalVisible(false)}
-        notifications={mockNotifications}
+        notifications={modalNotifications}
       />
     </View>
   );

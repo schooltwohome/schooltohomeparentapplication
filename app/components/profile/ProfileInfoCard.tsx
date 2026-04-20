@@ -1,55 +1,76 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet, Platform } from "react-native";
-import { Mail, Phone, MapPin } from "lucide-react-native";
+import { Mail, Phone, MapPin, Sparkles } from "lucide-react-native";
 import InfoListItem from "./InfoListItem";
 
-export default function ProfileInfoCard() {
+function initialsFromName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase() || "?";
+}
+
+export type ProfileInfo = {
+  displayName: string;
+  initials: string;
+  email: string;
+  phone: string;
+  address: string;
+};
+
+export default function ProfileInfoCard({ profile }: { profile: ProfileInfo }) {
   return (
     <View style={styles.cardContainer}>
-      {/* Glow effect behind card */}
       <View style={styles.glow} />
-      
       <View style={styles.card}>
-        {/* Profile Header section in card */}
+        <View style={styles.accentBar} />
+
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
             <View style={styles.avatarGlow} />
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>SJ</Text>
+              <Text style={styles.avatarText}>{profile.initials}</Text>
             </View>
           </View>
           <View style={styles.nameContainer}>
-            <Text style={styles.name}>Sarah Johnson</Text>
+            <Text style={styles.name}>{profile.displayName}</Text>
             <View style={styles.badge}>
-              <View style={styles.activeDot} />
-              <Text style={styles.badgeText}>Verified Parent</Text>
+              <Sparkles size={12} color="#0369A1" />
+              <Text style={styles.badgeText}>Verified parent</Text>
             </View>
           </View>
         </View>
 
-        <View style={styles.divider} />
-
-        {/* Info items */}
-        <View style={styles.infoList}>
-          <InfoListItem 
-            icon={Mail} 
-            label="Email Address" 
-            value="sarah.johnson@email.com" 
-          />
-          <InfoListItem 
-            icon={Phone} 
-            label="Phone Number" 
-            value="+1 (555) 123-4567" 
-          />
-          <InfoListItem 
-            icon={MapPin} 
-            label="Home Address" 
-            value="123 Maple Avenue, Springfield" 
-          />
+        <View style={styles.infoPanel}>
+          <Text style={styles.panelLabel}>Contact</Text>
+          <View style={styles.infoList}>
+            <InfoListItem icon={Mail} label="Email" value={profile.email} kind="email" />
+            <InfoListItem icon={Phone} label="Phone" value={profile.phone} kind="phone" />
+            <InfoListItem icon={MapPin} label="Address" value={profile.address} kind="address" />
+          </View>
         </View>
       </View>
     </View>
   );
+}
+
+export function useProfileInfoFromParent(
+  name: string | null | undefined,
+  email: string | null | undefined,
+  phone: string | null | undefined,
+  address: string | null | undefined
+): ProfileInfo {
+  return useMemo(() => {
+    const displayName = name?.trim() || "Parent";
+    return {
+      displayName,
+      initials: initialsFromName(displayName),
+      email: email?.trim() || "—",
+      phone: phone?.trim() || "—",
+      address: address?.trim() || "—",
+    };
+  }, [name, email, phone, address]);
 }
 
 const styles = StyleSheet.create({
@@ -59,37 +80,48 @@ const styles = StyleSheet.create({
   },
   glow: {
     position: "absolute",
-    top: 20,
-    left: 20,
-    right: 20,
-    bottom: 0,
+    top: 24,
+    left: 16,
+    right: 16,
+    bottom: -4,
     backgroundColor: "#3B82F6",
-    opacity: 0.1,
+    opacity: 0.12,
     borderRadius: 32,
-    filter: "blur(20px)",
   },
   card: {
     backgroundColor: "#FFFFFF",
     borderRadius: 28,
-    padding: 24,
+    padding: 22,
     borderWidth: 1,
-    borderColor: "rgba(226, 232, 240, 0.8)",
+    borderColor: "#E8EEF4",
+    overflow: "hidden",
     ...Platform.select({
       ios: {
-        shadowColor: "#1E293B",
-        shadowOffset: { width: 0, height: 12 },
-        shadowOpacity: 0.08,
-        shadowRadius: 24,
+        shadowColor: "#0F172A",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.07,
+        shadowRadius: 20,
       },
       android: {
         elevation: 8,
       },
     }),
   },
+  accentBar: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    backgroundColor: "#3B82F6",
+    borderTopLeftRadius: 28,
+    borderBottomLeftRadius: 28,
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 20,
+    paddingLeft: 8,
   },
   avatarContainer: {
     position: "relative",
@@ -106,17 +138,17 @@ const styles = StyleSheet.create({
     opacity: 0.15,
   },
   avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 22,
-    backgroundColor: "#3B82F6",
+    width: 76,
+    height: 76,
+    borderRadius: 24,
+    backgroundColor: "#2563EB",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 3,
     borderColor: "#FFFFFF",
   },
   avatarText: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "900",
     color: "#FFFFFF",
     letterSpacing: -0.5,
@@ -125,41 +157,45 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "800",
     color: "#0F172A",
     marginBottom: 8,
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
   badge: {
     backgroundColor: "#F0F9FF",
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "flex-start",
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
     borderWidth: 1,
-    borderColor: "#BAE6FD",
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#0EA5E9",
-    marginRight: 6,
+    borderColor: "#BFDBFE",
   },
   badgeText: {
     fontSize: 12,
     color: "#0369A1",
     fontWeight: "700",
   },
-  divider: {
-    height: 1,
-    backgroundColor: "#F1F5F9",
-    marginBottom: 24,
+  infoPanel: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#EEF2F7",
+  },
+  panelLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#94A3B8",
+    letterSpacing: 1,
+    marginBottom: 14,
+    textTransform: "uppercase",
   },
   infoList: {
-    gap: 0,
+    gap: 16,
   },
 });

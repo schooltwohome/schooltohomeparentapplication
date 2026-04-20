@@ -1,51 +1,70 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { MapPin } from "lucide-react-native";
+import type { TrackingSegment } from "../../../../services/parentApi";
 
-interface Stop {
-  id: string;
-  name: string;
-  time: string;
-  isNext?: boolean;
-}
+type Props = { segment: TrackingSegment | null };
 
-const DUMMY_STOPS: Stop[] = [
-  { id: "1", name: "Oak Street Stop", time: "8:12 AM", isNext: true },
-  { id: "2", name: "Your Stop - Maple Ave", time: "8:18 AM" },
-  { id: "3", name: "Pine Road Stop", time: "8:25 AM" },
-];
+export default function UpcomingStops({ segment }: Props) {
+  const stops = useMemo(() => {
+    const list = segment?.routeStops ?? [];
+    const pickupName = segment?.pickupStop?.name?.trim();
+    return list.map((s) => ({
+      id: s.id,
+      name: s.stopName,
+      isPickup: pickupName ? s.stopName === pickupName : false,
+    }));
+  }, [segment]);
 
-export default function UpcomingStops() {
+  if (!stops.length) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.headerTitle}>Route stops</Text>
+        <Text style={styles.empty}>
+          No ordered stops returned for this route. Your school may still be configuring
+          the route.
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>Upcoming Stops</Text>
-      
+      <Text style={styles.headerTitle}>Route stops</Text>
+      {segment?.studentName ? (
+        <Text style={styles.sub}>
+          Showing order for {segment.studentName}
+          {segment.pickupStop ? ` · Your stop: ${segment.pickupStop.name}` : ""}
+        </Text>
+      ) : null}
+
       <View style={styles.timelineContainer}>
-        {DUMMY_STOPS.map((stop, index) => {
-          const isLast = index === DUMMY_STOPS.length - 1;
+        {stops.map((stop, index) => {
+          const isLast = index === stops.length - 1;
+          const highlight = stop.isPickup;
           return (
             <View key={stop.id} style={styles.stopRow}>
-              {/* Timeline Graphic */}
               <View style={styles.graphicColumn}>
-                <View style={[styles.dot, stop.isNext && styles.dotNext]}>
-                  {stop.isNext && <View style={styles.innerDot} />}
+                <View style={[styles.dot, highlight && styles.dotNext]}>
+                  {highlight ? <View style={styles.innerDot} /> : null}
                 </View>
-                {!isLast && <View style={styles.line} />}
+                {!isLast ? <View style={styles.line} /> : null}
               </View>
 
-              {/* Stop Info */}
               <View style={styles.infoColumn}>
                 <View style={styles.titleRow}>
-                  <Text style={[styles.stopName, stop.isNext && styles.stopNamelight]}>
+                  <Text
+                    style={[styles.stopName, highlight && styles.stopNameHighlight]}
+                  >
                     {stop.name}
                   </Text>
-                  {stop.isNext && (
+                  {highlight ? (
                     <View style={styles.nextBadge}>
-                      <Text style={styles.nextBadgeText}>Next</Text>
+                      <Text style={styles.nextBadgeText}>Your stop</Text>
                     </View>
-                  )}
+                  ) : null}
                 </View>
-                <Text style={styles.stopTime}>{stop.time}</Text>
+                <Text style={styles.orderLabel}>Order #{index + 1}</Text>
               </View>
             </View>
           );
@@ -63,14 +82,25 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
     color: "#1E293B",
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  sub: {
+    fontSize: 13,
+    color: "#64748B",
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  empty: {
+    fontSize: 14,
+    color: "#64748B",
+    lineHeight: 20,
   },
   timelineContainer: {
     paddingLeft: 8,
   },
   stopRow: {
     flexDirection: "row",
-    minHeight: 60,
+    minHeight: 56,
   },
   graphicColumn: {
     alignItems: "center",
@@ -107,18 +137,21 @@ const styles = StyleSheet.create({
   },
   infoColumn: {
     flex: 1,
-    paddingBottom: 24,
+    paddingBottom: 20,
   },
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
   },
   stopName: {
     fontSize: 16,
     color: "#475569",
     fontWeight: "500",
+    flex: 1,
   },
-  stopNamelight: {
+  stopNameHighlight: {
     fontWeight: "700",
     color: "#1E293B",
   },
@@ -127,15 +160,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 12,
-    marginLeft: 8,
   },
   nextBadgeText: {
     fontSize: 10,
     color: "#2563EB",
     fontWeight: "700",
   },
-  stopTime: {
-    fontSize: 14,
+  orderLabel: {
+    fontSize: 13,
     color: "#94A3B8",
     marginTop: 4,
   },

@@ -20,7 +20,7 @@ export default function BusStatusCard({
       <View style={styles.contentRow}>
         <View style={styles.imageContainer}>
           <Image 
-            source={require("../../../assets/images/school_bus.png")} 
+            source={require("../../../assets/images/school_bus.jpg")} 
             style={styles.busImage}
             resizeMode="contain"
           />

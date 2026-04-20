@@ -1,66 +1,132 @@
-import React from "react";
-import { StyleSheet, View } from "react-native";
-import MapView, { Marker } from "react-native-maps";
-import MapViewDirections from "react-native-maps-directions";
-import { Bus, MapPin, School } from "lucide-react-native";
+import React, { useMemo } from "react";
+import { StyleSheet, View, Text } from "react-native";
+import MapView, { Marker, Polyline } from "react-native-maps";
+import { Bus, MapPin } from "lucide-react-native";
+import type { TrackingSegment } from "../../../services/parentApi";
 
-export default function LiveMap() {
-  // Dummy coordinates roughly tracing a small route
-  const schoolCoords = { latitude: 37.78825, longitude: -122.4324 };
-  const busCoords = { latitude: 37.78125, longitude: -122.4224 };
-  const stop1Coords = { latitude: 37.78525, longitude: -122.4284 };
-  
-  const routeCoords = [
-    busCoords,
-    { latitude: 37.78225, longitude: -122.4244 },
-    { latitude: 37.78425, longitude: -122.4264 },
-    stop1Coords,
-    { latitude: 37.78625, longitude: -122.4304 },
-    schoolCoords,
-  ];
+type Coord = { latitude: number; longitude: number };
+
+function buildRegion(points: Coord[]): {
+  latitude: number;
+  longitude: number;
+  latitudeDelta: number;
+  longitudeDelta: number;
+} {
+  if (points.length === 0) {
+    return {
+      latitude: 20.5937,
+      longitude: 78.9629,
+      latitudeDelta: 8,
+      longitudeDelta: 8,
+    };
+  }
+  if (points.length === 1) {
+    return {
+      latitude: points[0].latitude,
+      longitude: points[0].longitude,
+      latitudeDelta: 0.06,
+      longitudeDelta: 0.06,
+    };
+  }
+  const lats = points.map((p) => p.latitude);
+  const lons = points.map((p) => p.longitude);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
+  const minLon = Math.min(...lons);
+  const maxLon = Math.max(...lons);
+  const midLat = (minLat + maxLat) / 2;
+  const midLon = (minLon + maxLon) / 2;
+  const latDelta = Math.max(0.04, (maxLat - minLat) * 2.2);
+  const lonDelta = Math.max(0.04, (maxLon - minLon) * 2.2);
+  return {
+    latitude: midLat,
+    longitude: midLon,
+    latitudeDelta: latDelta,
+    longitudeDelta: lonDelta,
+  };
+}
+
+type Props = {
+  segment: TrackingSegment | null;
+  userLocation: Coord | null;
+};
+
+export default function LiveMap({ segment, userLocation }: Props) {
+  const busCoord: Coord | null =
+    segment?.latitude != null &&
+    segment?.longitude != null &&
+    Number.isFinite(segment.latitude) &&
+    Number.isFinite(segment.longitude)
+      ? { latitude: segment.latitude, longitude: segment.longitude }
+      : null;
+
+  const pickupCoord: Coord | null =
+    segment?.pickupStop &&
+    Number.isFinite(segment.pickupStop.latitude) &&
+    Number.isFinite(segment.pickupStop.longitude)
+      ? {
+          latitude: segment.pickupStop.latitude,
+          longitude: segment.pickupStop.longitude,
+        }
+      : null;
+
+  const region = useMemo(() => {
+    const pts: Coord[] = [];
+    if (busCoord) pts.push(busCoord);
+    if (pickupCoord) pts.push(pickupCoord);
+    if (userLocation) pts.push(userLocation);
+    return buildRegion(pts);
+  }, [busCoord, pickupCoord, userLocation]);
+
+  const lineCoords = useMemo(() => {
+    if (busCoord && pickupCoord) return [busCoord, pickupCoord];
+    return [];
+  }, [busCoord, pickupCoord]);
+
+  const hasAnyPoint = !!(busCoord || pickupCoord || userLocation);
+
+  if (!hasAnyPoint) {
+    return (
+      <View style={[styles.container, styles.emptyWrap]}>
+        <Text style={styles.emptyTitle}>No live position yet</Text>
+        <Text style={styles.emptySub}>
+          When the school assigns a route and the bus shares GPS, the map will show
+          the bus and your child&apos;s stop here.
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <MapView
-        style={styles.map}
-        initialRegion={{
-          latitude: 37.78425,
-          longitude: -122.4274,
-          latitudeDelta: 0.02,
-          longitudeDelta: 0.02,
-        }}
-      >
-        {/* Route Directions (Snaps to roads via Google Maps API) */}
-        <MapViewDirections
-          origin={busCoords}
-          destination={schoolCoords}
-          waypoints={[stop1Coords]}
-          apikey={"YOUR_GOOGLE_MAPS_APIKEY_HERE"} // IMPORTANT: Replace this with your Google Maps API Key
-          strokeWidth={4}
-          strokeColor="#3B82F6" // Tailwind Blue 500
-        />
+      <MapView style={styles.map} initialRegion={region}>
+        {lineCoords.length === 2 ? (
+          <Polyline
+            coordinates={lineCoords}
+            strokeColor="#3B82F6"
+            strokeWidth={3}
+          />
+        ) : null}
 
-        {/* Bus Stop Marker */}
-        <Marker coordinate={stop1Coords} title="Stop #4">
-          <View style={styles.stopMarker}>
-             <MapPin size={16} color="#FFFFFF" />
-          </View>
-        </Marker>
+        {pickupCoord ? (
+          <Marker coordinate={pickupCoord} title={segment?.pickupStop?.name ?? "Pickup stop"}>
+            <View style={styles.stopMarker}>
+              <MapPin size={16} color="#FFFFFF" />
+            </View>
+          </Marker>
+        ) : null}
 
-        {/* School Marker */}
-        <Marker coordinate={schoolCoords} title="School">
-          <View style={styles.schoolMarker}>
-             <School size={20} color="#FFFFFF" />
-          </View>
-        </Marker>
+        {busCoord ? (
+          <Marker coordinate={busCoord} title="School bus">
+            <View style={styles.busMarker}>
+              <Bus size={20} color="#FFFFFF" />
+            </View>
+          </Marker>
+        ) : null}
 
-        {/* Bus Marker */}
-        <Marker coordinate={busCoords} title="School Bus">
-          <View style={styles.busMarker}>
-             <Bus size={20} color="#FFFFFF" />
-          </View>
-        </Marker>
-        
+        {userLocation ? (
+          <Marker coordinate={userLocation} title="You" pinColor="#0F172A" />
+        ) : null}
       </MapView>
     </View>
   );
@@ -70,12 +136,31 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  emptyWrap: {
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+    backgroundColor: "#EEF2FF",
+  },
+  emptyTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  emptySub: {
+    fontSize: 14,
+    color: "#64748B",
+    textAlign: "center",
+    lineHeight: 20,
+  },
   map: {
     width: "100%",
     height: "100%",
   },
   busMarker: {
-    backgroundColor: "#F59E0B", // amber 500
+    backgroundColor: "#F59E0B",
     padding: 8,
     borderRadius: 20,
     borderWidth: 2,
@@ -86,23 +171,11 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  schoolMarker: {
-    backgroundColor: "#10B981", // emerald 500
-    padding: 10,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: "#FFFFFF",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
   stopMarker: {
-    backgroundColor: "#3B82F6", // blue 500
-    padding: 6,
-    borderRadius: 16,
+    backgroundColor: "#6366F1",
+    padding: 8,
+    borderRadius: 18,
     borderWidth: 2,
     borderColor: "#FFFFFF",
-  }
+  },
 });

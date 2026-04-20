@@ -1,85 +1,77 @@
-import React, { useState } from "react";
-import { View, StyleSheet, ScrollView, Animated } from "react-native";
+import React, { useCallback } from "react";
+import { View, StyleSheet, ScrollView, Text, ActivityIndicator } from "react-native";
+import { useFocusEffect } from "expo-router";
 import AlertsHeader from "./AlertsHeader";
-import NotificationItem, { NotificationItemProps } from "./NotificationItem";
-
-const MOCK_NOTIFICATIONS: NotificationItemProps[] = [
-  {
-    id: "1",
-    title: "Bus Arriving Soon",
-    message: "Bus #SB-042 will arrive at your stop in 5 minutes",
-    time: "2 mins ago",
-    type: "bus",
-    isRead: false,
-  },
-  {
-    id: "2",
-    title: "Student Boarded",
-    message: "Liam has boarded the bus at Stop #12",
-    time: "25 mins ago",
-    type: "board",
-    isRead: false,
-  },
-  {
-    id: "3",
-    title: "Route Delay",
-    message: "Bus running 10 minutes late due to traffic",
-    time: "1 hour ago",
-    type: "delay",
-    isRead: false,
-  },
-  {
-    id: "4",
-    title: "Arrived at School",
-    message: "Bus #SB-042 has arrived at Lincoln Elementary",
-    time: "Yesterday",
-    type: "arrive",
-    isRead: true,
-  },
-  {
-    id: "5",
-    title: "Schedule Update",
-    message: "Tomorrow's pickup time changed to 7:45 AM",
-    time: "Yesterday",
-    type: "update",
-    isRead: true,
-  },
-];
+import NotificationItem from "./NotificationItem";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import {
+  fetchNotifications,
+  markNotificationReadThunk,
+  markAllNotificationsReadThunk,
+} from "../../../store/slices/notificationsSlice";
 
 export default function AlertsScreen() {
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
+  const dispatch = useAppDispatch();
+  const token = useAppSelector((s) => s.auth.token);
+  const notifications = useAppSelector((s) => s.notifications.items);
+  const loading = useAppSelector((s) => s.notifications.loading);
 
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  useFocusEffect(
+    useCallback(() => {
+      if (token) {
+        dispatch(fetchNotifications());
+      }
+    }, [token, dispatch])
+  );
 
-  const handleMarkAllRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const handleMarkAllRead = async () => {
+    if (!unreadCount) return;
+    await dispatch(markAllNotificationsReadThunk());
   };
 
   const handleNotificationPress = (id: string) => {
-    setNotifications(prev => 
-      prev.map(n => n.id === id ? { ...n, isRead: true } : n)
-    );
+    dispatch(markNotificationReadThunk(id));
   };
 
   return (
     <View style={styles.container}>
-      <AlertsHeader 
-        unreadCount={unreadCount} 
-        onMarkAllRead={handleMarkAllRead} 
+      <AlertsHeader
+        unreadCount={unreadCount}
+        onMarkAllRead={handleMarkAllRead}
       />
-      
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {notifications.map((item) => (
-          <NotificationItem
-            key={item.id}
-            {...item}
-            onPress={() => handleNotificationPress(item.id)}
-          />
-        ))}
-      </ScrollView>
+
+      {loading && notifications.length === 0 ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color="#0F172A" />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {notifications.length === 0 ? (
+            <Text style={styles.empty}>
+              No notifications yet. When your school sends updates, they will
+              appear here and as push alerts (if enabled).
+            </Text>
+          ) : (
+            notifications.map((item) => (
+              <NotificationItem
+                key={item.id}
+                id={item.id}
+                title={item.title}
+                message={item.message}
+                time={item.time}
+                type={item.type}
+                isRead={item.isRead}
+                onPress={() => handleNotificationPress(item.id)}
+              />
+            ))
+          )}
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -92,6 +84,19 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: 120, // Space for bottom tabs
+    paddingBottom: 120,
+  },
+  centered: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  empty: {
+    fontSize: 15,
+    color: "#64748B",
+    lineHeight: 22,
+    textAlign: "center",
+    marginTop: 32,
+    paddingHorizontal: 16,
   },
 });

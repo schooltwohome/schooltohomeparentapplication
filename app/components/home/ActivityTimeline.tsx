@@ -31,6 +31,12 @@ export default function ActivityTimeline({ activities }: ActivityTimelineProps) 
   return (
     <View style={styles.container}>
       <Text style={styles.sectionTitle}>Today&apos;s Activity</Text>
+
+      {activities.length === 0 ? (
+        <Text style={styles.emptyText}>
+          No notifications yet. School alerts will appear in this timeline.
+        </Text>
+      ) : null}
       
       <View style={styles.timelineContainer}>
         {activities.map((activity, index) => {
@@ -93,6 +99,12 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#0F172A",
     marginBottom: 24,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: "#64748B",
+    lineHeight: 20,
+    marginBottom: 8,
   },
   timelineContainer: {
     paddingLeft: 4,

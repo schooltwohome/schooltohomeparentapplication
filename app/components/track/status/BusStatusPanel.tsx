@@ -1,32 +1,41 @@
 import React, { useMemo } from "react";
-import { View, StyleSheet, ScrollView, Dimensions } from "react-native";
+import { View, StyleSheet, ScrollView, Dimensions, Text, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { 
-  useAnimatedStyle, 
-  useSharedValue, 
-  withTiming, 
-  runOnJS 
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
 } from "react-native-reanimated";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import DriverProfile from "./DriverProfile";
 import RideStatsRow from "./RideStatsRow";
 import UpcomingStops from "./UpcomingStops";
+import type { TrackingSegment } from "../../../../services/parentApi";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const MIN_HEIGHT = 200;
 const MID_HEIGHT = SCREEN_HEIGHT * 0.45;
 const MAX_HEIGHT = SCREEN_HEIGHT * 0.85;
 
-export default function BusStatusPanel() {
+type Props = {
+  segment: TrackingSegment | null;
+  allSegments: TrackingSegment[];
+  loading: boolean;
+};
+
+export default function BusStatusPanel({ segment, allSegments, loading }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SCREEN_HEIGHT - MID_HEIGHT);
   const context = useSharedValue({ y: 0 });
 
-  const snapPoints = useMemo(() => [
-    SCREEN_HEIGHT - MAX_HEIGHT,
-    SCREEN_HEIGHT - MID_HEIGHT,
-    SCREEN_HEIGHT - MIN_HEIGHT
-  ], []);
+  const snapPoints = useMemo(
+    () => [
+      SCREEN_HEIGHT - MAX_HEIGHT,
+      SCREEN_HEIGHT - MID_HEIGHT,
+      SCREEN_HEIGHT - MIN_HEIGHT,
+    ],
+    []
+  );
 
   const gesture = Gesture.Pan()
     .onStart(() => {
@@ -34,44 +43,45 @@ export default function BusStatusPanel() {
     })
     .onUpdate((event) => {
       translateY.value = event.translationY + context.value.y;
-      // Clamped strictly to prevent any "elastic" overflow during drag
       translateY.value = Math.max(translateY.value, SCREEN_HEIGHT - MAX_HEIGHT);
     })
     .onEnd((event) => {
-      // Snapping logic
       const targetY = event.translationY + context.value.y;
-      const closest = snapPoints.reduce((prev, curr) => 
+      const closest = snapPoints.reduce((prev, curr) =>
         Math.abs(curr - targetY) < Math.abs(prev - targetY) ? curr : prev
       );
-      // Switched to withTiming for a stiff, predictable snap without any bounce
       translateY.value = withTiming(closest, { duration: 300 });
     });
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ translateY: translateY.value }],
-    };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
 
   return (
     <GestureDetector gesture={gesture}>
       <Animated.View style={[styles.container, animatedStyle, { height: MAX_HEIGHT }]}>
-        {/* Drag Indicator Handle */}
         <View style={styles.handleContainer}>
           <View style={styles.handle} />
         </View>
 
-        <ScrollView 
+        {loading ? (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color="#0F172A" />
+            <Text style={styles.loadingText}>Loading route data…</Text>
+          </View>
+        ) : null}
+
+        <ScrollView
           contentContainerStyle={[
-            styles.scrollContent, 
-            { paddingBottom: Math.max(insets.bottom, 16) + 120 }
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 16) + 120 },
           ]}
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <DriverProfile />
-          <RideStatsRow />
-          <UpcomingStops />
+          <DriverProfile segment={segment} />
+          <RideStatsRow segment={segment} linkedChildrenCount={allSegments.length} />
+          <UpcomingStops segment={segment} />
         </ScrollView>
       </Animated.View>
     </GestureDetector>
@@ -81,7 +91,7 @@ export default function BusStatusPanel() {
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    top: 0, // We use translateY to push it down
+    top: 0,
     left: 0,
     right: 0,
     backgroundColor: "#FFFFFF",
@@ -108,5 +118,16 @@ const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 24,
     paddingTop: 8,
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 8,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: "#64748B",
   },
 });

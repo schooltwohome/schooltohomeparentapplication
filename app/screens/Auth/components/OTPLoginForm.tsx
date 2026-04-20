@@ -6,10 +6,16 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
-import { Mail, Smartphone, ArrowRight, Check } from "lucide-react-native";
+import { ArrowRight } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
+import { useAppDispatch, useAppSelector } from "../../../../store/hooks";
+import {
+  sendParentOtpThunk,
+  resendParentOtpThunk,
+} from "../../../../store/slices/authSlice";
 import Animated, { 
   FadeInDown, 
   FadeOutUp, 
@@ -21,59 +27,88 @@ import Animated, {
 
 
 interface OTPLoginFormProps {
-  onLogin: (email: string, otp: string) => void;
+  onLogin: (phone: string, otp: string) => Promise<void>;
+}
+
+function isValidPhone(raw: string): boolean {
+  const t = raw.trim();
+  return /^\+?[1-9]\d{1,14}$/.test(t);
 }
 
 export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const dispatch = useAppDispatch();
+  const otpPending = useAppSelector((s) => s.auth.otpPending);
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState({ email: "", otp: "" });
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [errors, setErrors] = useState({ phone: "", otp: "" });
   const [timer, setTimer] = useState(0);
 
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: ReturnType<typeof setInterval> | undefined;
     if (timer > 0) {
       interval = setInterval(() => {
         setTimer((prev) => prev - 1);
       }, 1000);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [timer]);
 
-  const validateEmail = (): boolean => {
-    if (!email.trim()) {
-      setErrors((e) => ({ ...e, email: "Email or phone is required." }));
+  const validatePhone = (): boolean => {
+    if (!phone.trim()) {
+      setErrors((e) => ({ ...e, phone: "Phone number is required." }));
+      return false;
+    }
+    if (!isValidPhone(phone)) {
+      setErrors((e) => ({
+        ...e,
+        phone: "Use international format, e.g. +919876543210",
+      }));
       return false;
     }
     return true;
   };
 
-  const handleSendOTP = () => {
-    if (validateEmail()) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setIsLoading(true);
-      // Mocking API call
-
-      setTimeout(() => {
-        setIsLoading(false);
-        setOtpSent(true);
-        setTimer(60); // 1 minute countdown
-        setErrors((e) => ({ ...e, email: "" }));
-      }, 1500);
+  const handleSendOTP = async () => {
+    if (!validatePhone()) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    try {
+      await dispatch(sendParentOtpThunk(phone.trim())).unwrap();
+      setOtpSent(true);
+      setTimer(60);
+      setErrors((e) => ({ ...e, phone: "" }));
+    } catch (e) {
+      Alert.alert("Send OTP", String(e));
     }
   };
 
-  const handleSignIn = () => {
-    if (!otp.trim() || otp.length < 4) {
+  const handleResendOTP = async () => {
+    if (!validatePhone()) return;
+    try {
+      await dispatch(resendParentOtpThunk(phone.trim())).unwrap();
+      setTimer(60);
+    } catch (e) {
+      Alert.alert("Resend OTP", String(e));
+    }
+  };
+
+  const handleSignIn = async () => {
+    if (!otp.trim() || otp.length !== 6) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      setErrors((e) => ({ ...e, otp: "Please enter a valid OTP." }));
+      setErrors((e) => ({ ...e, otp: "Enter the 6-digit code." }));
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onLogin(email, otp);
+    setVerifyLoading(true);
+    try {
+      await onLogin(phone.trim(), otp);
+    } finally {
+      setVerifyLoading(false);
+    }
   };
 
 
@@ -81,20 +116,20 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
     <View style={styles.container}>
       <Animated.View layout={LinearTransition} style={styles.formWrapper}>
 
-        {/* Email / Phone Field */}
+        {/* Phone (E.164) — backend parent OTP is phone-only */}
         <View style={styles.fieldGroup}>
-          <Text style={styles.label}>Email / Phone</Text>
+          <Text style={styles.label}>Mobile number</Text>
           <View style={styles.inputWrapper}>
             <TextInput
-              placeholder="Enter your email or phone"
-              value={email}
+              placeholder="+919876543210"
+              value={phone}
               onChangeText={(text) => {
-                setEmail(text);
-                if (errors.email) setErrors((e) => ({ ...e, email: "" }));
+                setPhone(text);
+                if (errors.phone) setErrors((e) => ({ ...e, phone: "" }));
               }}
-              style={[styles.input, errors.email ? styles.inputError : null]}
+              style={[styles.input, errors.phone ? styles.inputError : null]}
               placeholderTextColor="#94A3B8"
-              keyboardType="email-address"
+              keyboardType="phone-pad"
               autoCapitalize="none"
               autoCorrect={false}
               editable={!otpSent}
@@ -111,8 +146,8 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
               </TouchableOpacity>
             )}
           </View>
-          {errors.email ? (
-            <Text style={styles.errorText}>{errors.email}</Text>
+          {errors.phone ? (
+            <Text style={styles.errorText}>{errors.phone}</Text>
           ) : null}
         </View>
 
@@ -126,10 +161,10 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
             <TouchableOpacity 
               style={styles.sendOtpButton} 
               onPress={handleSendOTP} 
-              disabled={isLoading}
+              disabled={otpPending}
               activeOpacity={0.8}
             >
-              {isLoading ? (
+              {otpPending ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />
               ) : (
                 <>
@@ -152,13 +187,13 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
               {timer > 0 ? (
                 <Text style={styles.timerText}>Resend in {timer}s</Text>
               ) : (
-                <TouchableOpacity onPress={handleSendOTP}>
+                <TouchableOpacity onPress={handleResendOTP}>
                   <Text style={styles.resendText}>Resend OTP</Text>
                 </TouchableOpacity>
               )}
             </View>
             <TextInput
-              placeholder="Enter 4-digit code"
+              placeholder="6-digit code"
               value={otp}
               onChangeText={(text) => {
                 setOtp(text.replace(/[^0-9]/g, ""));
@@ -167,7 +202,7 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
               style={[styles.input, styles.otpInput, errors.otp ? styles.inputError : null]}
               placeholderTextColor="#94A3B8"
               keyboardType="number-pad"
-              maxLength={4}
+              maxLength={6}
               autoFocus={true}
             />
             {errors.otp ? (
@@ -197,20 +232,21 @@ export default function OTPLoginForm({ onLogin }: OTPLoginFormProps) {
 
       <View style={styles.buttonSection}>
         <TouchableOpacity 
-          style={[styles.signInButton, (!otpSent || otp.length < 4) && styles.disabledButton]} 
+          style={[styles.signInButton, (!otpSent || otp.length !== 6 || verifyLoading) && styles.disabledButton]} 
           onPress={handleSignIn} 
-          disabled={!otpSent || otp.length < 4}
+          disabled={!otpSent || otp.length !== 6 || verifyLoading}
           activeOpacity={0.85}
         >
-          <Text style={styles.signInText}>Sign In</Text>
+          {verifyLoading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text style={styles.signInText}>Sign In</Text>
+          )}
         </TouchableOpacity>
 
-        <View style={styles.signUpRow}>
-          <Text style={styles.signUpGray}>Don&apos;t have an account? </Text>
-          <TouchableOpacity>
-            <Text style={styles.linkBlue}>Contact Admin</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={styles.signUpGray}>
+          Parent accounts are created by your school. Contact them if you need access.
+        </Text>
       </View>
     </View>
   );
@@ -348,14 +384,11 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     letterSpacing: 0.4,
   },
-  signUpRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 16,
-  },
   signUpGray: {
     fontSize: 13,
     color: "#64748B",
+    textAlign: "center",
+    marginTop: 16,
+    lineHeight: 18,
   },
 });

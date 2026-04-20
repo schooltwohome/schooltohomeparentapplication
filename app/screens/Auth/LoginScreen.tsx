@@ -1,11 +1,16 @@
 import React from "react";
-import { TouchableWithoutFeedback, Keyboard } from "react-native";
+import { TouchableWithoutFeedback, Keyboard, Alert } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import LoginHeader from "./components/LoginHeader";
 import LoginForm from "./components/LoginForm";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import {
+  loginWithPasswordThunk,
+  clearError,
+} from "../../../store/slices/authSlice";
 
 /**
  * LoginScreen
@@ -18,11 +23,23 @@ import LoginForm from "./components/LoginForm";
  */
 export default function LoginScreen() {
   const router = useRouter();
+  const dispatch = useAppDispatch();
+  const { loading, error } = useAppSelector((s) => s.auth);
 
-  const handleLogin = () => {
-    // Authentication logic bypassed for UI testing
-    console.log("Login submitted - Navigating to Home");
-    router.replace("/home" as any);
+  React.useEffect(() => {
+    if (error) {
+      Alert.alert("Sign in", error);
+      dispatch(clearError());
+    }
+  }, [error, dispatch]);
+
+  const handleLogin = async (identifier: string, password: string) => {
+    const result = await dispatch(
+      loginWithPasswordThunk({ identifier, password })
+    );
+    if (loginWithPasswordThunk.fulfilled.match(result)) {
+      router.replace("/home" as any);
+    }
   };
 
   return (
@@ -49,7 +66,7 @@ export default function LoginScreen() {
           extraHeight={120}
         >
           <LoginHeader />
-          <LoginForm onLogin={handleLogin} />
+          <LoginForm onLogin={handleLogin} loading={loading} />
         </KeyboardAwareScrollView>
       </TouchableWithoutFeedback>
     </SafeAreaView>

@@ -1,24 +1,48 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform, Image } from "react-native";
-import { Phone, MessageSquare, User, Bus, Star, CheckCircle2 } from "lucide-react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Platform } from "react-native";
+import { Phone, MessageSquare, User, Bus, CheckCircle2 } from "lucide-react-native";
+import type { TrackingSegment } from "../../../../services/parentApi";
 
-export default function DriverProfile() {
+function formatTripStatus(status: string | null): string {
+  if (!status) return "No active trip";
+  const map: Record<string, string> = {
+    scheduled: "Scheduled",
+    on_going: "On the way",
+    completed: "Completed",
+    cancelled: "Cancelled",
+  };
+  return map[status] ?? status.replace(/_/g, " ");
+}
+
+type Props = { segment: TrackingSegment | null };
+
+export default function DriverProfile({ segment }: Props) {
+  const phone = segment?.driverPhone?.trim() || "";
+  const busLabel = segment?.busNumber ?? "—";
+  const eta =
+    segment?.etaMinutes != null && segment.etaMinutes > 0
+      ? `~${segment.etaMinutes} min to pickup`
+      : "—";
+  const driverName = segment?.driverName?.trim() || "Driver not assigned";
+  const route = segment?.routeName ?? "Route";
+
   const handleCall = () => {
-    Linking.openURL(Platform.OS === 'ios' ? 'telprompt:1234567890' : 'tel:1234567890');
+    if (!phone) return;
+    Linking.openURL(Platform.OS === "ios" ? `telprompt:${phone}` : `tel:${phone}`);
   };
 
   const handleMessage = () => {
-    Linking.openURL(Platform.OS === 'ios' ? 'sms:1234567890' : 'sms:1234567890');
+    if (!phone) return;
+    Linking.openURL(Platform.OS === "ios" ? `sms:${phone}` : `sms:${phone}`);
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.leftSection}>
         <View style={styles.avatarContainer}>
-          <Image 
-            source={{ uri: 'https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=200&h=200&fit=crop' }} 
-            style={styles.avatarImage} 
-          />
+          <View style={styles.avatarFallback}>
+            <User size={28} color="#64748B" />
+          </View>
           <View style={styles.verifiedBadge}>
             <CheckCircle2 size={12} color="#FFFFFF" fill="#3B82F6" />
           </View>
@@ -28,30 +52,44 @@ export default function DriverProfile() {
           <View style={styles.topRow}>
             <View style={styles.busBadge}>
               <Bus size={12} color="#3B82F6" style={{ marginRight: 4 }} />
-              <Text style={styles.busId}>SB-042</Text>
+              <Text style={styles.busId} numberOfLines={1}>
+                {busLabel}
+              </Text>
             </View>
-            <Text style={styles.timeText} numberOfLines={1}>ETA 8:45 AM</Text>
+            <Text style={styles.timeText} numberOfLines={1}>
+              {eta}
+            </Text>
           </View>
-          <Text style={styles.driverName} numberOfLines={1}>John Smith</Text>
+          <Text style={styles.routeLine} numberOfLines={1}>
+            {route}
+          </Text>
+          <Text style={styles.statusLine} numberOfLines={1}>
+            {formatTripStatus(segment?.tripStatus ?? null)}
+          </Text>
+          <Text style={styles.driverName} numberOfLines={1}>
+            {driverName}
+          </Text>
         </View>
       </View>
 
-      <View style={styles.rightSection}>
-        <TouchableOpacity 
-          style={[styles.actionBtn, styles.callBtn]} 
-          onPress={handleCall}
-          activeOpacity={0.7}
-        >
-          <Phone size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.actionBtn, styles.msgBtn]} 
-          onPress={handleMessage}
-          activeOpacity={0.7}
-        >
-          <MessageSquare size={20} color="#3B82F6" />
-        </TouchableOpacity>
-      </View>
+      {phone ? (
+        <View style={styles.rightSection}>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.callBtn]}
+            onPress={handleCall}
+            activeOpacity={0.7}
+          >
+            <Phone size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionBtn, styles.msgBtn]}
+            onPress={handleMessage}
+            activeOpacity={0.7}
+          >
+            <MessageSquare size={20} color="#3B82F6" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -63,63 +101,77 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 24,
     paddingVertical: 4,
-    width: '100%', // Ensure it stays within bounds
+    width: "100%",
   },
   leftSection: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1, // Allow this section to take available space
-    marginRight: 10, // Spacer between sections
+    flex: 1,
+    marginRight: 10,
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
   },
-  avatarImage: {
+  avatarFallback: {
     width: 60,
     height: 60,
     borderRadius: 30,
+    backgroundColor: "#F1F5F9",
+    justifyContent: "center",
+    alignItems: "center",
     borderWidth: 2,
-    borderColor: '#F1F5F9',
+    borderColor: "#E2E8F0",
   },
   verifiedBadge: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     right: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 8,
     padding: 1,
   },
   infoContainer: {
-    marginLeft: 12, // Slightly reduced
+    marginLeft: 12,
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 4,
   },
   timeText: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#3B82F6',
+    fontWeight: "600",
+    color: "#3B82F6",
     flexShrink: 1,
   },
   busBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EFF6FF',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
     marginRight: 4,
+    maxWidth: "55%",
   },
   busId: {
     fontSize: 10,
-    fontWeight: '800',
-    color: '#3B82F6',
+    fontWeight: "800",
+    color: "#3B82F6",
     letterSpacing: 0.5,
+  },
+  routeLine: {
+    fontSize: 13,
+    color: "#64748B",
+    marginBottom: 2,
+  },
+  statusLine: {
+    fontSize: 12,
+    color: "#94A3B8",
+    marginBottom: 4,
   },
   driverName: {
     fontSize: 18,
@@ -128,8 +180,8 @@ const styles = StyleSheet.create({
   },
   rightSection: {
     flexDirection: "row",
-    gap: 8, // Slightly reduced gap
-    alignItems: 'center',
+    gap: 8,
+    alignItems: "center",
   },
   actionBtn: {
     width: 48,
