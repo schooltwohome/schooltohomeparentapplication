@@ -1,48 +1,25 @@
 import React, { useMemo } from "react";
-import { StyleSheet, View, Text } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import type { TrackingSegment } from "../../../services/parentApi";
 
 type Coord = { latitude: number; longitude: number };
 
-function buildRegion(points: Coord[]): {
-  latitude: number;
-  longitude: number;
-  latitudeDelta: number;
-  longitudeDelta: number;
-} {
-  if (points.length === 0) {
-    return {
-      latitude: 20.5937,
-      longitude: 78.9629,
-      latitudeDelta: 8,
-      longitudeDelta: 8,
-    };
-  }
-  if (points.length === 1) {
-    return {
-      latitude: points[0].latitude,
-      longitude: points[0].longitude,
-      latitudeDelta: 0.06,
-      longitudeDelta: 0.06,
-    };
-  }
-  const lats = points.map((p) => p.latitude);
-  const lons = points.map((p) => p.longitude);
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  const midLat = (minLat + maxLat) / 2;
-  const midLon = (minLon + maxLon) / 2;
-  const latDelta = Math.max(0.04, (maxLat - minLat) * 2.2);
-  const lonDelta = Math.max(0.04, (maxLon - minLon) * 2.2);
-  return {
-    latitude: midLat,
-    longitude: midLon,
-    latitudeDelta: latDelta,
-    longitudeDelta: lonDelta,
-  };
+function toMapsQuery(coord: Coord) {
+  return `${coord.latitude},${coord.longitude}`;
+}
+
+async function openGoogleMapsSearch(coord: Coord, label?: string) {
+  const query = encodeURIComponent(label ? `${label} (${toMapsQuery(coord)})` : toMapsQuery(coord));
+  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+  await Linking.openURL(url);
+}
+
+async function openGoogleMapsDirections(from: Coord, to: Coord) {
+  const origin = encodeURIComponent(toMapsQuery(from));
+  const destination = encodeURIComponent(toMapsQuery(to));
+  const travelmode = "driving";
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&travelmode=${travelmode}`;
+  await Linking.openURL(url);
 }
 
 type Props = {
@@ -69,20 +46,14 @@ export default function LiveMap({ segment, userLocation }: Props) {
         }
       : null;
 
-  const region = useMemo(() => {
-    const pts: Coord[] = [];
-    if (busCoord) pts.push(busCoord);
-    if (pickupCoord) pts.push(pickupCoord);
-    if (userLocation) pts.push(userLocation);
-    return buildRegion(pts);
-  }, [busCoord, pickupCoord, userLocation]);
+  const safeUserLocation: Coord | null =
+    userLocation &&
+    Number.isFinite(userLocation.latitude) &&
+    Number.isFinite(userLocation.longitude)
+      ? userLocation
+      : null;
 
-  const lineCoords = useMemo(() => {
-    if (busCoord && pickupCoord) return [busCoord, pickupCoord];
-    return [];
-  }, [busCoord, pickupCoord]);
-
-  const hasAnyPoint = !!(busCoord || pickupCoord || userLocation);
+  const hasAnyPoint = !!(busCoord || pickupCoord || safeUserLocation);
 
   if (!hasAnyPoint) {
     return (
@@ -96,34 +67,57 @@ export default function LiveMap({ segment, userLocation }: Props) {
     );
   }
 
+  const primaryCoord = busCoord || pickupCoord || safeUserLocation;
+  const primaryLabel = useMemo(() => {
+    if (busCoord) return "School bus";
+    if (pickupCoord) return segment?.pickupStop?.name ?? "Pickup stop";
+    return "Your location";
+  }, [busCoord, pickupCoord, segment?.pickupStop?.name]);
+
   return (
-    <View style={styles.container}>
-      <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={region}>
-        {lineCoords.length === 2 ? (
-          <Polyline
-            coordinates={lineCoords}
-            strokeColor="#3B82F6"
-            strokeWidth={3}
-          />
-        ) : null}
+    <View style={[styles.container, styles.card]}>
+      <Text style={styles.title}>Live map</Text>
+      <Text style={styles.subTitle}>
+        {Platform.OS === "android"
+          ? "This opens Google Maps for live location and directions."
+          : "This opens Maps for live location and directions."}
+      </Text>
 
-        {pickupCoord ? (
-          <Marker
-            coordinate={pickupCoord}
-            title={segment?.pickupStop?.name ?? "Pickup stop"}
-            pinColor="#6366F1"
-            tracksViewChanges={false}
-          />
-        ) : null}
+      {primaryCoord ? (
+        <Pressable
+          style={[styles.btn, styles.btnPrimary]}
+          onPress={() => openGoogleMapsSearch(primaryCoord, primaryLabel)}
+        >
+          <Text style={styles.btnPrimaryText}>Open {primaryLabel} in Google Maps</Text>
+        </Pressable>
+      ) : null}
 
-        {busCoord ? (
-          <Marker coordinate={busCoord} title="School bus" pinColor="#F59E0B" tracksViewChanges={false} />
-        ) : null}
+      {safeUserLocation && pickupCoord ? (
+        <Pressable style={styles.btn} onPress={() => openGoogleMapsDirections(safeUserLocation, pickupCoord)}>
+          <Text style={styles.btnText}>Directions: You → Pickup stop</Text>
+        </Pressable>
+      ) : null}
 
-        {userLocation ? (
-          <Marker coordinate={userLocation} title="You" pinColor="#0F172A" tracksViewChanges={false} />
-        ) : null}
-      </MapView>
+      {safeUserLocation && busCoord ? (
+        <Pressable style={styles.btn} onPress={() => openGoogleMapsDirections(safeUserLocation, busCoord)}>
+          <Text style={styles.btnText}>Directions: You → Bus</Text>
+        </Pressable>
+      ) : null}
+
+      {pickupCoord ? (
+        <Pressable
+          style={styles.btn}
+          onPress={() => openGoogleMapsSearch(pickupCoord, segment?.pickupStop?.name ?? "Pickup stop")}
+        >
+          <Text style={styles.btnText}>Open pickup stop</Text>
+        </Pressable>
+      ) : null}
+
+      {busCoord ? (
+        <Pressable style={styles.btn} onPress={() => openGoogleMapsSearch(busCoord, "School bus")}>
+          <Text style={styles.btnText}>Open bus location</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -131,6 +125,24 @@ export default function LiveMap({ segment, userLocation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  card: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 18,
+    backgroundColor: "#EEF2FF",
+  },
+  title: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  subTitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: "#475569",
+    lineHeight: 18,
+    marginBottom: 14,
   },
   emptyWrap: {
     justifyContent: "center",
@@ -151,8 +163,27 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-  map: {
-    width: "100%",
-    height: "100%",
+  btn: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    marginTop: 10,
+  },
+  btnText: {
+    color: "#0F172A",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  btnPrimary: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+  btnPrimaryText: {
+    color: "#FFFFFF",
+    fontWeight: "800",
+    fontSize: 14,
   },
 });
