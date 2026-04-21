@@ -1,11 +1,9 @@
 module.exports = ({ config }) => {
   const googleMapsKey =
-    process.env.GOOGLE_MAPS_API_KEY?.trim() || 
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
     process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
     process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
     "AIzaSyAnjJcugrzeD5rNrj5WFwLAV6wUTrF_Ag4";
-
-  const isEasBuild = !!process.env.EAS_BUILD;
 
   return {
     ...(config || {}),
@@ -16,9 +14,10 @@ module.exports = ({ config }) => {
     icon: "./assets/images/icon.png",
     scheme: "schooltohomeparentapp",
     userInterfaceStyle: "automatic",
-    // Expo Go always runs with New Architecture on. We keep it enabled for local
-    // dev to avoid mismatches, but disable it for EAS builds for stability.
-    newArchEnabled: isEasBuild ? false : true,
+
+    
+    newArchEnabled: true,
+
     ios: {
       supportsTablet: true,
       ...((config && config.ios) || {}),
@@ -30,6 +29,7 @@ module.exports = ({ config }) => {
           googleMapsKey,
       },
     },
+
     android: {
       adaptiveIcon: {
         backgroundColor: "#E6F4FE",
@@ -39,12 +39,17 @@ module.exports = ({ config }) => {
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
+
       permissions: [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
       ],
+
       package: "com.school2home.schoolToHomeParentApp",
-      newArchEnabled: isEasBuild ? false : true,
+
+      
+      newArchEnabled: true,
+
       ...((config && config.android) || {}),
       config: {
         ...(((config && config.android) || {}).config || {}),
@@ -57,13 +62,16 @@ module.exports = ({ config }) => {
         },
       },
     },
+
     web: {
       output: "static",
       favicon: "./assets/images/favicon.png",
       ...((config && config.web) || {}),
     },
+
     plugins: [
       "expo-router",
+
       [
         "expo-splash-screen",
         {
@@ -76,6 +84,7 @@ module.exports = ({ config }) => {
           },
         },
       ],
+
       [
         "expo-location",
         {
@@ -87,7 +96,9 @@ module.exports = ({ config }) => {
             "Allow SchoolToHome to use your location to track your relative distance to the school bus.",
         },
       ],
+
       "expo-secure-store",
+
       [
         "expo-notifications",
         {
@@ -97,17 +108,22 @@ module.exports = ({ config }) => {
         },
       ],
     ],
+
     experiments: {
       typedRoutes: true,
     },
+
     extra: {
       apiUrl: "https://apidev.school2home.in",
+
+    
       googleMapsApiKey: googleMapsKey,
+
       router: {},
+
       eas: {
         projectId: "54899e3a-0c2b-456e-a093-20ed9e0e1b90",
       },
     },
   };
 };
-
