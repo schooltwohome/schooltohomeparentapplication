@@ -80,10 +80,106 @@ export async function getExpoPushTokenOrNull(): Promise<string | null> {
   }
 }
 
+export type ForegroundPushPayload = {
+  title: string;
+  body: string;
+  data: Record<string, unknown>;
+};
+
 /**
- * Refreshes the in-app notification list when a push arrives (foreground).
- * No-op in Expo Go.
+ * Foreground push: refresh inbox + optional in-app toast payload.
+ * No-op in Expo Go for native listeners (in-app notification list still uses the API).
  */
+export function subscribeToForegroundPush(handlers: {
+  onListRefresh?: () => void;
+  onForeground?: (payload: ForegroundPushPayload) => void;
+}): () => void {
+  if (!canLoadExpoNotifications()) {
+    return () => {};
+  }
+
+  let cancelled = false;
+  let removeListener: (() => void) | undefined;
+
+  void (async () => {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications || cancelled) return;
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+
+    const sub = Notifications.addNotificationReceivedListener((event) => {
+      if (cancelled) return;
+      const c = event.request.content;
+      const title =
+        typeof c.title === "string" ? c.title : "";
+      const body =
+        typeof c.body === "string"
+          ? c.body
+          : "";
+      const dataRaw = c.data as Record<string, unknown> | undefined;
+      const data =
+        dataRaw && typeof dataRaw === "object" ? dataRaw : {};
+      handlers.onListRefresh?.();
+      handlers.onForeground?.({ title, body, data });
+    });
+    if (cancelled) {
+      sub.remove();
+      return;
+    }
+    removeListener = () => sub.remove();
+  })();
+
+  return () => {
+    cancelled = true;
+    removeListener?.();
+  };
+}
+
+/**
+ * When the OS rotates the native push token, fetch a fresh Expo push token and sync with the backend.
+ * Uses `getExpoPushTokenAsync` outside the listener callback to avoid subscription loops.
+ */
+export function subscribeToExpoPushTokenRefreshes(
+  onNewExpoPushToken: (expoPushToken: string) => void
+): () => void {
+  if (!canLoadExpoNotifications()) {
+    return () => {};
+  }
+
+  let cancelled = false;
+  let removeListener: (() => void) | undefined;
+
+  void (async () => {
+    const Notifications = await loadNotificationsModule();
+    if (!Notifications || cancelled) return;
+
+    const sub = Notifications.addPushTokenListener(() => {
+      void (async () => {
+        const token = await getExpoPushTokenOrNull();
+        if (token) onNewExpoPushToken(token);
+      })();
+    });
+    if (cancelled) {
+      sub.remove();
+      return;
+    }
+    removeListener = () => sub.remove();
+  })();
+
+  return () => {
+    cancelled = true;
+    removeListener?.();
+  };
+}
+
 export type PushPermissionStatus =
   | "granted"
   | "denied"
@@ -110,42 +206,9 @@ export async function requestPushPermissionFromUser(): Promise<boolean> {
   return status === "granted";
 }
 
+/** @deprecated Prefer `subscribeToForegroundPush` */
 export function subscribeToForegroundNotifications(
   onNotification: () => void
 ): () => void {
-  if (!canLoadExpoNotifications()) {
-    return () => {};
-  }
-
-  let cancelled = false;
-  let removeListener: (() => void) | undefined;
-
-  void (async () => {
-    const Notifications = await loadNotificationsModule();
-    if (!Notifications || cancelled) return;
-
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
-
-    const sub = Notifications.addNotificationReceivedListener(() => {
-      if (!cancelled) onNotification();
-    });
-    if (cancelled) {
-      sub.remove();
-      return;
-    }
-    removeListener = () => sub.remove();
-  })();
-
-  return () => {
-    cancelled = true;
-    removeListener?.();
-  };
+  return subscribeToForegroundPush({ onListRefresh: onNotification });
 }

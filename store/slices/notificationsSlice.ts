@@ -6,6 +6,7 @@ import {
   registerParentPushDevice,
   type ApiNotification,
 } from "../../services/parentApi";
+import { ApiHttpError } from "../../services/http";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import {
   inferNotificationRowType,
@@ -94,17 +95,35 @@ export const registerPushDeviceThunk = createAsyncThunk(
       });
       return true;
     } catch (e: unknown) {
+      if (e instanceof ApiHttpError && e.status === 401) {
+        return rejectWithValue({
+          unauthorized: true as const,
+          message: e.message,
+        });
+      }
       const msg = e instanceof Error ? e.message : "Device registration failed";
-      return rejectWithValue(msg);
+      return rejectWithValue({ unauthorized: false as const, message: msg });
     }
   }
 );
+
+/** Bottom tab id in `app/home.tsx` — used when opening from a push tap. */
+export type ParentHomeTabId = "home" | "track" | "alerts" | "profile";
+
+export type PendingPushNavigation = {
+  tab: ParentHomeTabId;
+  tripId?: string;
+  busId?: string;
+  routeId?: string;
+};
 
 type NotificationsState = {
   items: NotificationRow[];
   loading: boolean;
   error: string | null;
   pushRegistered: boolean;
+  /** Cleared after the main shell applies the tab switch. */
+  pendingPushNavigation: PendingPushNavigation | null;
 };
 
 const initialState: NotificationsState = {
@@ -112,6 +131,7 @@ const initialState: NotificationsState = {
   loading: false,
   error: null,
   pushRegistered: false,
+  pendingPushNavigation: null,
 };
 
 const notificationsSlice = createSlice({
@@ -121,6 +141,18 @@ const notificationsSlice = createSlice({
     clearNotifications(state) {
       state.items = [];
       state.error = null;
+    },
+    clearPushRegistration(state) {
+      state.pushRegistered = false;
+    },
+    setPendingPushNavigation(
+      state,
+      action: { payload: PendingPushNavigation | null }
+    ) {
+      state.pendingPushNavigation = action.payload;
+    },
+    consumePendingPushNavigation(state) {
+      state.pendingPushNavigation = null;
     },
   },
   extraReducers: (builder) => {
@@ -150,9 +182,26 @@ const notificationsSlice = createSlice({
       .addCase(registerPushDeviceThunk.fulfilled, (state) => {
         state.pushRegistered = true;
       })
+      .addCase(registerPushDeviceThunk.rejected, (state, action) => {
+        const payload = action.payload as
+          | { unauthorized?: boolean; message?: string }
+          | string
+          | undefined;
+        if (
+          typeof payload === "object" &&
+          payload?.unauthorized === true
+        ) {
+          state.pushRegistered = false;
+        }
+      })
       .addCase(logoutThunk.fulfilled, () => ({ ...initialState }));
   },
 });
 
-export const { clearNotifications } = notificationsSlice.actions;
+export const {
+  clearNotifications,
+  clearPushRegistration,
+  setPendingPushNavigation,
+  consumePendingPushNavigation,
+} = notificationsSlice.actions;
 export default notificationsSlice.reducer;

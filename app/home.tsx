@@ -1,7 +1,7 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { View, StyleSheet } from "react-native";
+import { AppState, View, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import HomeHeader from "./components/home/HomeHeader";
 import BottomTabs from "./components/navigation/BottomTabs";
@@ -11,45 +11,40 @@ import AlertsScreen from "./components/alerts/AlertsScreen";
 import ProfileScreen from "./components/profile/ProfileScreen";
 import { useAppDispatch, useAppSelector } from "../store/hooks";
 import {
+  consumePendingPushNavigation,
   fetchNotifications,
-  registerPushDeviceThunk,
 } from "../store/slices/notificationsSlice";
-import {
-  getExpoPushTokenOrNull,
-  subscribeToForegroundNotifications,
-} from "../lib/pushNotifications";
-import { store } from "../store/store";
 
 export default function HomeScreen() {
   const dispatch = useAppDispatch();
   const [activeTab, setActiveTab] = React.useState("home");
   const displayName = useAppSelector((s) => s.auth.profile?.name?.trim()) || "Parent";
   const authToken = useAppSelector((s) => s.auth.token);
-  const pushRegistered = useAppSelector((s) => s.notifications.pushRegistered);
+  const pendingPushNavigation = useAppSelector(
+    (s) => s.notifications.pendingPushNavigation
+  );
 
   React.useEffect(() => {
     if (!authToken) return;
     dispatch(fetchNotifications());
   }, [authToken, dispatch]);
 
+  /** Pull new in-app alerts when returning from background (e.g. driver just started trip). */
   React.useEffect(() => {
-    if (!authToken || pushRegistered) return;
-    let cancelled = false;
-    (async () => {
-      const expoToken = await getExpoPushTokenOrNull();
-      if (cancelled || !expoToken) return;
-      await dispatch(registerPushDeviceThunk(expoToken));
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [authToken, pushRegistered, dispatch]);
+    if (!authToken) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        dispatch(fetchNotifications());
+      }
+    });
+    return () => sub.remove();
+  }, [authToken, dispatch]);
 
   React.useEffect(() => {
-    return subscribeToForegroundNotifications(() => {
-      store.dispatch(fetchNotifications());
-    });
-  }, []);
+    if (!pendingPushNavigation) return;
+    setActiveTab(pendingPushNavigation.tab);
+    dispatch(consumePendingPushNavigation());
+  }, [pendingPushNavigation, dispatch]);
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>

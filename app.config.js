@@ -115,6 +115,8 @@ module.exports = ({ config }) => {
 
     extra: {
       apiUrl: "https://apidev.school2home.in",
+      // LAN IP your phone uses to reach this machine (Wi‑Fi). Not 192.168.122.x (often libvirt/VM bridge).
+      // apiUrl: "http://192.168.72.162:8080",
 
     
       googleMapsApiKey: googleMapsKey,

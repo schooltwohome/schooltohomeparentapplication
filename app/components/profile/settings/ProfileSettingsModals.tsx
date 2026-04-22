@@ -279,8 +279,14 @@ export function PushNotificationsModal({
       }
       await dispatch(registerPushDeviceThunk(token)).unwrap();
       Alert.alert("Registered", "This device will receive school alerts when sent.");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Registration failed";
+    } catch (e: unknown) {
+      let msg = "Registration failed";
+      if (typeof e === "object" && e !== null && "message" in e) {
+        const m = (e as { message?: unknown }).message;
+        if (typeof m === "string" && m.length > 0) msg = m;
+      } else if (e instanceof Error) {
+        msg = e.message;
+      }
       Alert.alert("Registration failed", msg);
     } finally {
       setBusy(false);
