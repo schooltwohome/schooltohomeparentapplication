@@ -1,6 +1,6 @@
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { AppState, View, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import HomeHeader from "./components/home/HomeHeader";
@@ -14,6 +14,7 @@ import {
   consumePendingPushNavigation,
   fetchNotifications,
 } from "../store/slices/notificationsSlice";
+import { getParentTracking } from "../services/parentApi";
 
 export default function HomeScreen() {
   const dispatch = useAppDispatch();
@@ -23,11 +24,35 @@ export default function HomeScreen() {
   const pendingPushNavigation = useAppSelector(
     (s) => s.notifications.pendingPushNavigation
   );
+  const notificationItems = useAppSelector((s) => s.notifications.items);
+
+  const [hasLiveTripFromTracking, setHasLiveTripFromTracking] = useState(false);
+
+  const refreshLiveTrip = useCallback(async () => {
+    if (!authToken) {
+      setHasLiveTripFromTracking(false);
+      return;
+    }
+    try {
+      const { segments } = await getParentTracking(authToken);
+      setHasLiveTripFromTracking(
+        segments.some(
+          (s) => s.tripStatus === "scheduled" || s.tripStatus === "on_going"
+        )
+      );
+    } catch {
+      setHasLiveTripFromTracking(false);
+    }
+  }, [authToken]);
 
   React.useEffect(() => {
     if (!authToken) return;
     dispatch(fetchNotifications());
   }, [authToken, dispatch]);
+
+  React.useEffect(() => {
+    void refreshLiveTrip();
+  }, [refreshLiveTrip, notificationItems]);
 
   /** Pull new in-app alerts when returning from background (e.g. driver just started trip). */
   React.useEffect(() => {
@@ -35,10 +60,11 @@ export default function HomeScreen() {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") {
         dispatch(fetchNotifications());
+        void refreshLiveTrip();
       }
     });
     return () => sub.remove();
-  }, [authToken, dispatch]);
+  }, [authToken, dispatch, refreshLiveTrip]);
 
   React.useEffect(() => {
     if (!pendingPushNavigation) return;
@@ -52,12 +78,19 @@ export default function HomeScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       {activeTab === "home" && (
-        <HomeHeader greeting="Welcome Back!" userName={displayName} />
+        <HomeHeader
+          greeting="Welcome Back!"
+          userName={displayName}
+          hasLiveTripFromTracking={hasLiveTripFromTracking}
+        />
       )}
 
       <View style={styles.contentContainer}>
         {activeTab === "home" && (
-          <HomeDashboard onOpenTrack={() => setActiveTab("track")} />
+          <HomeDashboard
+            onOpenTrack={() => setActiveTab("track")}
+            hasLiveTripFromTracking={hasLiveTripFromTracking}
+          />
         )}
         {activeTab === "track" && <TrackScreen />}
         {activeTab === "alerts" && <AlertsScreen />}

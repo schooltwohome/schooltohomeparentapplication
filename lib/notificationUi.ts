@@ -5,6 +5,26 @@ export type NotificationRowType =
   | "arrive"
   | "update";
 
+/**
+ * In-app titles that imply a live school trip. When tracking shows no active trip,
+ * these should not drive the home “live bus” card or timeline rows.
+ */
+export function isTripStartStyleNotificationTitle(title: string): boolean {
+  const t = title.trim().toLowerCase();
+  return (
+    t === "your bus trip is starting" ||
+    t === "bus starting now" ||
+    t === "driver assigned to bus"
+  );
+}
+
+export function isStaleTripStartNotification(
+  title: string,
+  hasLiveTripFromTracking: boolean
+): boolean {
+  return !hasLiveTripFromTracking && isTripStartStyleNotificationTitle(title);
+}
+
 /** Map server copy to alert row icon bucket (no type field on API yet). */
 export function inferNotificationRowType(
   title: string,

@@ -4,53 +4,78 @@ import BusStatusCard from "./BusStatusCard";
 import ChildStatusCard from "./ChildStatusCard";
 import ActivityTimeline from "./ActivityTimeline";
 import { useAppSelector } from "../../../store/hooks";
-import { inferActivityType } from "../../../lib/notificationUi";
+import {
+  inferActivityType,
+  isStaleTripStartNotification,
+} from "../../../lib/notificationUi";
 
 type Props = {
   onOpenTrack?: () => void;
+  /** From parent tracking snapshot — hides stale “trip starting” when no active trip. */
+  hasLiveTripFromTracking: boolean;
 };
 
-export default function HomeDashboard({ onOpenTrack }: Props) {
+export default function HomeDashboard({
+  onOpenTrack,
+  hasLiveTripFromTracking,
+}: Props) {
   const children = useAppSelector((s) => s.auth.children);
   const notificationItems = useAppSelector((s) => s.notifications.items);
   const loading = useAppSelector((s) => s.notifications.loading);
 
-  const latest = notificationItems[0];
+  const homeCardNotification = useMemo(() => {
+    for (const n of notificationItems) {
+      if (isStaleTripStartNotification(n.title, hasLiveTripFromTracking))
+        continue;
+      return n;
+    }
+    return null;
+  }, [notificationItems, hasLiveTripFromTracking]);
 
   const activities = useMemo(() => {
-    return notificationItems.slice(0, 10).map((n) => ({
-      id: n.id,
-      title: n.title,
-      time: n.time,
-      type: inferActivityType(n.title, n.message),
-      description: n.message,
-    }));
-  }, [notificationItems]);
+    return notificationItems
+      .filter(
+        (n) => !isStaleTripStartNotification(n.title, hasLiveTripFromTracking)
+      )
+      .slice(0, 10)
+      .map((n) => ({
+        id: n.id,
+        title: n.title,
+        time: n.time,
+        type: inferActivityType(n.title, n.message),
+        description: n.message,
+      }));
+  }, [notificationItems, hasLiveTripFromTracking]);
 
   return (
     <ScrollView
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {latest ? (
+      {homeCardNotification ? (
         <BusStatusCard
-          route={latest.title}
+          route={homeCardNotification.title}
           distance={
-            latest.message.length > 100
-              ? `${latest.message.slice(0, 100)}…`
-              : latest.message
+            homeCardNotification.message.length > 100
+              ? `${homeCardNotification.message.slice(0, 100)}…`
+              : homeCardNotification.message
           }
-          eta={latest.time}
+          eta={homeCardNotification.time}
           onTrackPress={onOpenTrack}
         />
       ) : (
         <View style={styles.noBusCard}>
           <Text style={styles.noBusTitle}>
-            {loading ? "Loading updates…" : "No notifications yet"}
+            {loading
+              ? "Loading updates…"
+              : notificationItems.length > 0
+                ? "No active bus trip"
+                : "No notifications yet"}
           </Text>
           <Text style={styles.noBusSub}>
-            When your school sends alerts (bus ETA, delays, arrivals), they will
-            show here.
+            {notificationItems.length > 0
+              ? "When a driver starts a trip for your route, live updates will appear here again."
+              : "When your school sends alerts (bus ETA, delays, arrivals), they will show here."}
           </Text>
         </View>
       )}

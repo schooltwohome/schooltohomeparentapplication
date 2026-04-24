@@ -3,14 +3,19 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Bell } from "lucide-react-native";
 import NotificationModal from "./NotificationModal";
 import { useAppSelector } from "../../../store/hooks";
-import { inferModalType } from "../../../lib/notificationUi";
+import { inferModalType, isStaleTripStartNotification } from "../../../lib/notificationUi";
 
 interface HomeHeaderProps {
   greeting: string;
   userName: string;
+  hasLiveTripFromTracking: boolean;
 }
 
-export default function HomeHeader({ greeting, userName }: HomeHeaderProps) {
+export default function HomeHeader({
+  greeting,
+  userName,
+  hasLiveTripFromTracking,
+}: HomeHeaderProps) {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const items = useAppSelector((s) => s.notifications.items);
 
@@ -21,14 +26,19 @@ export default function HomeHeader({ greeting, userName }: HomeHeaderProps) {
 
   const modalNotifications = useMemo(
     () =>
-      items.slice(0, 12).map((n) => ({
-        id: n.id,
-        title: n.title,
-        message: n.message,
-        time: n.time,
-        type: inferModalType(n.title, n.message),
-      })),
-    [items]
+      items
+        .filter(
+          (n) => !isStaleTripStartNotification(n.title, hasLiveTripFromTracking)
+        )
+        .slice(0, 12)
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          time: n.time,
+          type: inferModalType(n.title, n.message),
+        })),
+    [items, hasLiveTripFromTracking]
   );
 
   const displayCount = unreadCount > 9 ? "9+" : unreadCount.toString();
