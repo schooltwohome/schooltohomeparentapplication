@@ -59,9 +59,11 @@ function buildRegion(points: Coord[]): {
 type Props = {
   segment: TrackingSegment | null;
   userLocation: Coord | null;
+  isLocationStale: boolean;
+  staleLabel: string | null;
 };
 
-export default function LiveMap({ segment, userLocation }: Props) {
+export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel }: Props) {
   const pickupStop = segment?.pickupStop ?? null;
 
   const busCoord = useMemo<Coord | null>(() => {
@@ -80,7 +82,7 @@ export default function LiveMap({ segment, userLocation }: Props) {
       longitude: pickupStop.longitude,
     };
     return isValidCoord(candidate) ? candidate : null;
-  }, [pickupStop, pickupStop?.latitude, pickupStop?.longitude]);
+  }, [pickupStop]);
 
   const safeUserLocation = useMemo<Coord | null>(() => {
     if (!userLocation) return null;
@@ -123,6 +125,11 @@ export default function LiveMap({ segment, userLocation }: Props) {
           <Text style={styles.arrivingText}>Arriving now</Text>
         </View>
       ) : null}
+      {isLocationStale && staleLabel ? (
+        <View style={styles.staleBadge}>
+          <Text style={styles.staleText}>{staleLabel}</Text>
+        </View>
+      ) : null}
       <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={region}>
         {lineCoords.length === 2 ? (
           <Polyline coordinates={lineCoords} strokeColor="#3B82F6" strokeWidth={3} />
@@ -138,7 +145,12 @@ export default function LiveMap({ segment, userLocation }: Props) {
         ) : null}
 
         {busCoord ? (
-          <Marker coordinate={busCoord} title="School bus" pinColor="#F59E0B" tracksViewChanges={false} />
+          <Marker
+            coordinate={busCoord}
+            title={isLocationStale ? "School bus (updating)" : "School bus"}
+            pinColor={isLocationStale ? "#94A3B8" : "#F59E0B"}
+            tracksViewChanges={false}
+          />
         ) : null}
 
         {safeUserLocation ? (
@@ -170,6 +182,21 @@ const styles = StyleSheet.create({
   arrivingText: {
     color: "#92400E",
     fontWeight: "700",
+    fontSize: 12,
+  },
+  staleBadge: {
+    position: "absolute",
+    top: 44,
+    alignSelf: "center",
+    zIndex: 2,
+    backgroundColor: "#EFF6FF",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  staleText: {
+    color: "#1D4ED8",
+    fontWeight: "600",
     fontSize: 12,
   },
   emptyWrap: {

@@ -21,9 +21,10 @@ type Props = {
   segment: TrackingSegment | null;
   allSegments: TrackingSegment[];
   loading: boolean;
+  staleLabel: string | null;
 };
 
-export default function BusStatusPanel({ segment, allSegments, loading }: Props) {
+export default function BusStatusPanel({ segment, allSegments, loading, staleLabel }: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SCREEN_HEIGHT - MID_HEIGHT);
   const context = useSharedValue({ y: 0 });
@@ -79,7 +80,7 @@ export default function BusStatusPanel({ segment, allSegments, loading }: Props)
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
-          <DriverProfile segment={segment} />
+          <DriverProfile segment={segment} staleLabel={staleLabel} />
           <RideStatsRow segment={segment} linkedChildrenCount={allSegments.length} />
           <UpcomingStops segment={segment} />
         </ScrollView>

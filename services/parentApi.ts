@@ -135,6 +135,8 @@ export type TrackingSegment = {
   driverPhone: string | null;
   speedKmh: number | null;
   lastFixAt: string | null;
+  isLocationStale?: boolean | null;
+  locationAgeSeconds?: number | null;
   latitude: number | null;
   longitude: number | null;
   distanceToPickupKm: number | null;

@@ -36,6 +36,24 @@ export default function TrackScreen() {
     return withGps ?? segments[0];
   }, [segments]);
 
+  const freshnessUi = useMemo(() => {
+    if (!primarySegment) {
+      return {
+        isStale: false,
+        staleLabel: null as string | null,
+      };
+    }
+    const age = primarySegment.locationAgeSeconds;
+    const isStale = primarySegment.isLocationStale === true;
+    if (!isStale) {
+      return { isStale: false, staleLabel: null as string | null };
+    }
+    if (typeof age === "number" && Number.isFinite(age)) {
+      return { isStale: true, staleLabel: `Location updating... Last updated ${age}s ago` };
+    }
+    return { isStale: true, staleLabel: "Location updating..." };
+  }, [primarySegment]);
+
   const loadTracking = useCallback(async () => {
     if (!token) {
       setSegments([]);
@@ -131,11 +149,17 @@ export default function TrackScreen() {
           <Text style={styles.bannerText}>{trackError}</Text>
         </View>
       ) : null}
-      <LiveMap segment={primarySegment} userLocation={userLocation} />
+      <LiveMap
+        segment={primarySegment}
+        userLocation={userLocation}
+        isLocationStale={freshnessUi.isStale}
+        staleLabel={freshnessUi.staleLabel}
+      />
       <BusStatusPanel
         segment={primarySegment}
         allSegments={segments}
         loading={trackLoading}
+        staleLabel={freshnessUi.staleLabel}
       />
     </View>
   );

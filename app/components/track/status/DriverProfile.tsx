@@ -14,9 +14,9 @@ function formatTripStatus(status: string | null): string {
   return map[status] ?? status.replace(/_/g, " ");
 }
 
-type Props = { segment: TrackingSegment | null };
+type Props = { segment: TrackingSegment | null; staleLabel: string | null };
 
-export default function DriverProfile({ segment }: Props) {
+export default function DriverProfile({ segment, staleLabel }: Props) {
   const phone = segment?.driverPhone?.trim() || "";
   const busLabel = segment?.busNumber ?? "—";
   const eta =
@@ -66,6 +66,11 @@ export default function DriverProfile({ segment }: Props) {
           <Text style={styles.statusLine} numberOfLines={1}>
             {formatTripStatus(segment?.tripStatus ?? null)}
           </Text>
+          {staleLabel ? (
+            <Text style={styles.staleLine} numberOfLines={1}>
+              {staleLabel}
+            </Text>
+          ) : null}
           <Text style={styles.driverName} numberOfLines={1}>
             {driverName}
           </Text>
@@ -171,6 +176,11 @@ const styles = StyleSheet.create({
   statusLine: {
     fontSize: 12,
     color: "#94A3B8",
+    marginBottom: 4,
+  },
+  staleLine: {
+    fontSize: 11,
+    color: "#1D4ED8",
     marginBottom: 4,
   },
   driverName: {
