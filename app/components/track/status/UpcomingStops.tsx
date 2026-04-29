@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { View, Text, StyleSheet } from "react-native";
-import { MapPin } from "lucide-react-native";
 import type { TrackingSegment } from "../../../../services/parentApi";
 
 type Props = { segment: TrackingSegment | null };
@@ -9,10 +8,12 @@ export default function UpcomingStops({ segment }: Props) {
   const stops = useMemo(() => {
     const list = segment?.routeStops ?? [];
     const pickupName = segment?.pickupStop?.name?.trim();
+    const completedStopIds = new Set(segment?.completedStopIds ?? []);
     return list.map((s) => ({
       id: s.id,
       name: s.stopName,
       isPickup: pickupName ? s.stopName === pickupName : false,
+      isCompleted: completedStopIds.has(s.id),
     }));
   }, [segment]);
 
@@ -42,6 +43,12 @@ export default function UpcomingStops({ segment }: Props) {
         {stops.map((stop, index) => {
           const isLast = index === stops.length - 1;
           const highlight = stop.isPickup;
+          const statusText = stop.isCompleted ? "Reached" : "Pending";
+          const pickupText = highlight
+            ? segment?.hasReachedPickup
+              ? "Bus reached your stop"
+              : "Bus not reached yet"
+            : null;
           return (
             <View key={stop.id} style={styles.stopRow}>
               <View style={styles.graphicColumn}>
@@ -58,6 +65,23 @@ export default function UpcomingStops({ segment }: Props) {
                   >
                     {stop.name}
                   </Text>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      stop.isCompleted ? styles.statusReached : styles.statusPending,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        stop.isCompleted
+                          ? styles.statusReachedText
+                          : styles.statusPendingText,
+                      ]}
+                    >
+                      {statusText}
+                    </Text>
+                  </View>
                   {highlight ? (
                     <View style={styles.nextBadge}>
                       <Text style={styles.nextBadgeText}>Your stop</Text>
@@ -65,6 +89,7 @@ export default function UpcomingStops({ segment }: Props) {
                   ) : null}
                 </View>
                 <Text style={styles.orderLabel}>Order #{index + 1}</Text>
+                {pickupText ? <Text style={styles.pickupStatus}>{pickupText}</Text> : null}
               </View>
             </View>
           );
@@ -170,5 +195,32 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#94A3B8",
     marginTop: 4,
+  },
+  pickupStatus: {
+    fontSize: 12,
+    marginTop: 4,
+    color: "#334155",
+    fontWeight: "600",
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
+  statusReached: {
+    backgroundColor: "#DCFCE7",
+  },
+  statusReachedText: {
+    color: "#166534",
+  },
+  statusPending: {
+    backgroundColor: "#F1F5F9",
+  },
+  statusPendingText: {
+    color: "#475569",
   },
 });

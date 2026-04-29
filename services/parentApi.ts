@@ -145,6 +145,10 @@ export type TrackingSegment = {
     longitude: number;
   } | null;
   routeStops: Array<{ id: string; stopName: string; stopOrder: number }>;
+  completedStopIds: string[];
+  nextStopId: string | null;
+  hasReachedPickup: boolean;
+  pickupReachedAt: string | null;
 };
 
 export function getParentTracking(token: string) {

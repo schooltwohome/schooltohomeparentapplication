@@ -5,6 +5,17 @@ import type { TrackingSegment } from "../../../services/parentApi";
 
 type Coord = { latitude: number; longitude: number };
 
+function isValidCoord(coord: Coord): boolean {
+  return (
+    Number.isFinite(coord.latitude) &&
+    Number.isFinite(coord.longitude) &&
+    coord.latitude >= -90 &&
+    coord.latitude <= 90 &&
+    coord.longitude >= -180 &&
+    coord.longitude <= 180
+  );
+}
+
 function buildRegion(points: Coord[]): {
   latitude: number;
   longitude: number;
@@ -51,30 +62,32 @@ type Props = {
 };
 
 export default function LiveMap({ segment, userLocation }: Props) {
-  const busCoord: Coord | null =
-    segment?.latitude != null &&
-    segment?.longitude != null &&
-    Number.isFinite(segment.latitude) &&
-    Number.isFinite(segment.longitude)
-      ? { latitude: segment.latitude, longitude: segment.longitude }
-      : null;
+  const pickupStop = segment?.pickupStop ?? null;
 
-  const pickupCoord: Coord | null =
-    segment?.pickupStop &&
-    Number.isFinite(segment.pickupStop.latitude) &&
-    Number.isFinite(segment.pickupStop.longitude)
-      ? {
-          latitude: segment.pickupStop.latitude,
-          longitude: segment.pickupStop.longitude,
-        }
-      : null;
+  const busCoord = useMemo<Coord | null>(() => {
+    if (segment?.latitude == null || segment?.longitude == null) return null;
+    const candidate = {
+      latitude: segment.latitude,
+      longitude: segment.longitude,
+    };
+    return isValidCoord(candidate) ? candidate : null;
+  }, [segment?.latitude, segment?.longitude]);
 
-  const safeUserLocation: Coord | null =
-    userLocation &&
-    Number.isFinite(userLocation.latitude) &&
-    Number.isFinite(userLocation.longitude)
-      ? userLocation
-      : null;
+  const pickupCoord = useMemo<Coord | null>(() => {
+    if (!pickupStop) return null;
+    const candidate = {
+      latitude: pickupStop.latitude,
+      longitude: pickupStop.longitude,
+    };
+    return isValidCoord(candidate) ? candidate : null;
+  }, [pickupStop, pickupStop?.latitude, pickupStop?.longitude]);
+
+  const safeUserLocation = useMemo<Coord | null>(() => {
+    if (!userLocation) return null;
+    return isValidCoord(userLocation) ? userLocation : null;
+  }, [userLocation]);
+  const isArrivingNow =
+    segment?.distanceToPickupKm != null && segment.distanceToPickupKm <= 0.1;
 
   const region = useMemo(() => {
     const pts: Coord[] = [];
@@ -105,6 +118,11 @@ export default function LiveMap({ segment, userLocation }: Props) {
 
   return (
     <View style={styles.container}>
+      {isArrivingNow ? (
+        <View style={styles.arrivingBadge}>
+          <Text style={styles.arrivingText}>Arriving now</Text>
+        </View>
+      ) : null}
       <MapView provider={PROVIDER_GOOGLE} style={styles.map} initialRegion={region}>
         {lineCoords.length === 2 ? (
           <Polyline coordinates={lineCoords} strokeColor="#3B82F6" strokeWidth={3} />
@@ -138,6 +156,21 @@ const styles = StyleSheet.create({
   map: {
     width: "100%",
     height: "100%",
+  },
+  arrivingBadge: {
+    position: "absolute",
+    top: 12,
+    alignSelf: "center",
+    zIndex: 2,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  arrivingText: {
+    color: "#92400E",
+    fontWeight: "700",
+    fontSize: 12,
   },
   emptyWrap: {
     justifyContent: "center",
