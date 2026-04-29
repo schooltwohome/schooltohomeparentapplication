@@ -85,6 +85,8 @@ export type ApiNotification = {
   message: string;
   is_read: boolean;
   created_at: string;
+  /** Server semantic type for icon/deep link (e.g. student_boarded, stop_completed). */
+  event_type?: string | null;
 };
 
 export function getParentNotifications(token: string, limit = 50) {

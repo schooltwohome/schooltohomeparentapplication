@@ -9,7 +9,7 @@ import {
 import { ApiHttpError } from "../../services/http";
 import { formatRelativeTime } from "../../lib/formatRelativeTime";
 import {
-  inferNotificationRowType,
+  rowTypeFromEventType,
   type NotificationRowType,
 } from "../../lib/notificationUi";
 import { logoutThunk } from "./authSlice";
@@ -24,16 +24,19 @@ export type NotificationRow = {
   time: string;
   type: NotificationRowType;
   isRead: boolean;
+  eventType: string | null;
 };
 
 function mapApi(n: ApiNotification): NotificationRow {
+  const et = n.event_type ?? null;
   return {
     id: String(n.id),
     title: n.title,
     message: n.message,
     time: formatRelativeTime(n.created_at),
-    type: inferNotificationRowType(n.title, n.message),
+    type: rowTypeFromEventType(et, n.title, n.message),
     isRead: n.is_read,
+    eventType: et,
   };
 }
 
