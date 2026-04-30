@@ -8,11 +8,16 @@ export default function UpcomingStops({ segment }: Props) {
   const stops = useMemo(() => {
     const list = segment?.routeStops ?? [];
     const pickupName = segment?.pickupStop?.name?.trim();
+    const pickupId = segment?.pickupStopId?.trim();
     const completedStopIds = new Set(segment?.completedStopIds ?? []);
     return list.map((s) => ({
       id: s.id,
       name: s.stopName,
-      isPickup: pickupName ? s.stopName === pickupName : false,
+      isPickup: pickupId
+        ? s.id === pickupId
+        : pickupName
+          ? s.stopName === pickupName
+          : false,
       isCompleted: completedStopIds.has(s.id),
     }));
   }, [segment]);

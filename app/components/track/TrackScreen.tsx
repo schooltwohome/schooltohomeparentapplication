@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { View, StyleSheet, Text, ActivityIndicator } from "react-native";
 import * as Location from "expo-location";
+import { useFocusEffect } from "expo-router";
 import LiveMap from "./LiveMap";
 import BusStatusPanel from "./status/BusStatusPanel";
 import PermissionPrompt from "./PermissionPrompt";
@@ -9,8 +10,14 @@ import {
   getParentTracking,
   type TrackingSegment,
 } from "../../../services/parentApi";
+import { useParentTrackingRealtime } from "../../hooks/useParentTrackingRealtime";
 
+/** UI poll interval. GPS freshness (`locationAgeSeconds`) depends on driver uploads + backend persistence, not this interval. */
 const POLL_MS = 15000;
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
 
 export default function TrackScreen() {
   const token = useAppSelector((s) => s.auth.token);
@@ -23,15 +30,21 @@ export default function TrackScreen() {
   const [segments, setSegments] = useState<TrackingSegment[]>([]);
   const [trackLoading, setTrackLoading] = useState(true);
   const [trackError, setTrackError] = useState<string | null>(null);
+  const [screenFocused, setScreenFocused] = useState(true);
+
+  useFocusEffect(
+    useCallback(() => {
+      setScreenFocused(true);
+      return () => setScreenFocused(false);
+    }, [])
+  );
 
   const primarySegment = useMemo(() => {
     if (!segments.length) return null;
     const withGps = segments.find(
       (s) =>
-        s.latitude != null &&
-        s.longitude != null &&
-        Number.isFinite(s.latitude) &&
-        Number.isFinite(s.longitude)
+        isFiniteNumber(s.latitude) &&
+        isFiniteNumber(s.longitude)
     );
     return withGps ?? segments[0];
   }, [segments]);
@@ -63,7 +76,11 @@ export default function TrackScreen() {
     try {
       setTrackError(null);
       const data = await getParentTracking(token);
-      setSegments(data.segments ?? []);
+      const nextSegments = data.segments ?? [];
+      if (__DEV__) {
+        console.log("[TrackScreen] fetched tracking segments:", nextSegments.length);
+      }
+      setSegments(nextSegments);
     } catch (e: unknown) {
       setTrackError(e instanceof Error ? e.message : "Could not load tracking");
       setSegments([]);
@@ -71,6 +88,36 @@ export default function TrackScreen() {
       setTrackLoading(false);
     }
   }, [token]);
+
+  const liveBusIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const seg of segments) {
+      if (seg.busId) ids.add(seg.busId);
+    }
+    return [...ids];
+  }, [segments]);
+
+  useParentTrackingRealtime(
+    token,
+    liveBusIds,
+    loadTracking,
+    Boolean(token && hasPermission === true && screenFocused)
+  );
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    const selected = primarySegment;
+    console.log("[TrackScreen] selected primary segment", {
+      segmentCount: segments.length,
+      studentUuid: selected?.studentUuid ?? null,
+      busId: selected?.busId ?? null,
+      tripStatus: selected?.tripStatus ?? null,
+      latitude: selected?.latitude ?? null,
+      longitude: selected?.longitude ?? null,
+      hasValidBusCoord:
+        isFiniteNumber(selected?.latitude) && isFiniteNumber(selected?.longitude),
+    });
+  }, [segments.length, primarySegment]);
 
   useEffect(() => {
     (async () => {
@@ -160,6 +207,7 @@ export default function TrackScreen() {
         allSegments={segments}
         loading={trackLoading}
         staleLabel={freshnessUi.staleLabel}
+        userLocation={userLocation}
       />
     </View>
   );

@@ -129,6 +129,7 @@ export type TrackingSegment = {
   studentName: string;
   routeName: string | null;
   tripStatus: string | null;
+  tripId?: string | null;
   busNumber: string | null;
   busId: string | null;
   driverName: string | null;
@@ -146,7 +147,14 @@ export type TrackingSegment = {
     latitude: number;
     longitude: number;
   } | null;
-  routeStops: Array<{ id: string; stopName: string; stopOrder: number }>;
+  pickupStopId?: string | null;
+  routeStops: {
+    id: string;
+    stopName: string;
+    stopOrder: number;
+    latitude?: number | null;
+    longitude?: number | null;
+  }[];
   completedStopIds: string[];
   nextStopId: string | null;
   hasReachedPickup: boolean;

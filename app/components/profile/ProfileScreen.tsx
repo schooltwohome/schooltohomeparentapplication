@@ -22,7 +22,7 @@ import {
   PrivacySecurityModal,
   PushNotificationsModal,
   pushStatusSubtitle,
-} from "./settings/ProfileSettingsModals";
+} from "./settings/_ProfileSettingsModals";
 import {
   getPushPermissionStatus,
   type PushPermissionStatus,

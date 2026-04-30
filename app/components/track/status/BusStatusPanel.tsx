@@ -10,6 +10,7 @@ import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import DriverProfile from "./DriverProfile";
 import RideStatsRow from "./RideStatsRow";
 import UpcomingStops from "./UpcomingStops";
+import ParentDirectionsCard from "../ParentDirectionsCard";
 import type { TrackingSegment } from "../../../../services/parentApi";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -22,9 +23,16 @@ type Props = {
   allSegments: TrackingSegment[];
   loading: boolean;
   staleLabel: string | null;
+  userLocation: { latitude: number; longitude: number } | null;
 };
 
-export default function BusStatusPanel({ segment, allSegments, loading, staleLabel }: Props) {
+export default function BusStatusPanel({
+  segment,
+  allSegments,
+  loading,
+  staleLabel,
+  userLocation,
+}: Props) {
   const insets = useSafeAreaInsets();
   const translateY = useSharedValue(SCREEN_HEIGHT - MID_HEIGHT);
   const context = useSharedValue({ y: 0 });
@@ -82,6 +90,7 @@ export default function BusStatusPanel({ segment, allSegments, loading, staleLab
         >
           <DriverProfile segment={segment} staleLabel={staleLabel} />
           <RideStatsRow segment={segment} linkedChildrenCount={allSegments.length} />
+          <ParentDirectionsCard segment={segment} userLocation={userLocation} />
           <UpcomingStops segment={segment} />
         </ScrollView>
       </Animated.View>

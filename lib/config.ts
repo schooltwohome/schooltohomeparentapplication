@@ -51,6 +51,16 @@ export const API_BASE_URL = (() => {
   return normalized;
 })();
 
+/**
+ * Socket.IO shares the same origin as `API_BASE_URL` by default.
+ * Set `EXPO_PUBLIC_SOCKET_IO_URL` if the WebSocket endpoint uses a different host (e.g. API gateway).
+ */
+export const SOCKET_IO_ORIGIN = (() => {
+  const o = process.env.EXPO_PUBLIC_SOCKET_IO_URL?.trim();
+  if (o) return o.replace(/\/$/, "");
+  return API_BASE_URL;
+})();
+
 /** Optional: shown in Help & Privacy screens (mailto / in-app browser). */
 export const SUPPORT_EMAIL =
   process.env.EXPO_PUBLIC_SUPPORT_EMAIL?.trim() || "";
