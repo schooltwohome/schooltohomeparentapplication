@@ -7,12 +7,12 @@ module.exports = ({ config }) => {
 
   return {
     ...(config || {}),
-    name: "schoolToHomeParentApp",
-    slug: "schoolToHomeParentApp",
+    name: "SchoolToHome",
+    slug: "SchoolToHome",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
-    scheme: "schooltohomeparentapp",
+    scheme: "SchoolToHomeParentApp",
     userInterfaceStyle: "automatic",
 
     
