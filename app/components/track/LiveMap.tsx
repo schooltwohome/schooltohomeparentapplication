@@ -32,7 +32,7 @@ import {
 import { polylineLengthMeters, etaMinutes as calcEtaMinutes } from "../../../lib/geo";
 import { useAnimatedBusMarker } from "../../_hooks/useAnimatedBusMarker";
 import { useRoutePolyline, useRoadSnappedPolyline } from "../../_hooks/useRoutePolyline";
-import BusMarker from "./BusMarker";
+import BusMarker3D from "../BusMarker3D";
 import FloatingInfoCard from "./FloatingInfoCard";
 import { LIGHT_MAP_STYLE } from "./mapStyles";
 import { normalizeTripStatus, type GeoPoint } from "../../../types/tracking";
@@ -107,6 +107,18 @@ function resolveStopStyle(stopId: string, segment: TrackingSegment): StopStyle {
   }
   if (segment.pickupStopId && stopId === segment.pickupStopId) return "pickup";
   return "upcoming";
+}
+
+/** Maps the raw trip-status string to a short, human-readable label for the marker callout. */
+function busStatusLabel(tripStatus: string | null | undefined): string {
+  const s = normalizeTripStatus(tripStatus);
+  switch (s) {
+    case "started":    return "On the way";
+    case "returning":  return "Returning";
+    case "completed":  return "Trip completed";
+    case "reached_school": return "At school";
+    default:           return "Not started";
+  }
 }
 
 export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel }: Props) {
@@ -511,13 +523,15 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
             })
           : null}
 
-        {/* Animated + rotating bus marker */}
+        {/* Animated 3D bus marker */}
         {busCoord ? (
-          <BusMarker
-            markerState={markerState}
-            title={isLocationStale ? "School bus (updating)" : "School bus"}
-            isStale={isLocationStale}
-            speedKmh={segment?.speedKmh ?? null}
+          <BusMarker3D
+            coordinate={{ latitude: busCoord.latitude, longitude: busCoord.longitude }}
+            heading={segment?.heading ?? markerState.bearingDegRef.current}
+            busNumber={segment?.busNumber ?? ""}
+            speed={segment?.speedKmh ?? 0}
+            isLive={!isLocationStale}
+            status={busStatusLabel(segment?.tripStatus)}
           />
         ) : null}
 
