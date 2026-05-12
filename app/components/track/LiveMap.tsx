@@ -19,7 +19,6 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  useColorScheme,
   View,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
@@ -35,7 +34,7 @@ import { useAnimatedBusMarker } from "../../_hooks/useAnimatedBusMarker";
 import { useRoutePolyline, useRoadSnappedPolyline } from "../../_hooks/useRoutePolyline";
 import BusMarker from "./BusMarker";
 import FloatingInfoCard from "./FloatingInfoCard";
-import { DARK_MAP_STYLE } from "./mapStyles";
+import { LIGHT_MAP_STYLE } from "./mapStyles";
 import { normalizeTripStatus, type GeoPoint } from "../../../types/tracking";
 
 const DEVIATION_THRESHOLD_METERS = 150;
@@ -111,8 +110,6 @@ function resolveStopStyle(stopId: string, segment: TrackingSegment): StopStyle {
 }
 
 export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel }: Props) {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
   const mapRef = useRef<MapView | null>(null);
   const lastKnownBusCoordRef = useRef<MapCoord | null>(null);
 
@@ -392,7 +389,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         provider={PROVIDER_GOOGLE}
         style={styles.map}
         initialRegion={initialRegion}
-        customMapStyle={isDark ? DARK_MAP_STYLE : []}
+        customMapStyle={LIGHT_MAP_STYLE}
         onMapReady={() => {
           isProgrammaticMoveRef.current = false;
           fitMapToPoints();
