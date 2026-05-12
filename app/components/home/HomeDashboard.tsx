@@ -33,15 +33,19 @@ export default function HomeDashboard({
   }, [notificationItems, hasLiveTripFromTracking]);
 
   const activities = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayMs = today.getTime();
     return notificationItems
-      .filter(
-        (n) => !isStaleTripStartNotification(n.title, hasLiveTripFromTracking)
-      )
+      .filter((n) => !isStaleTripStartNotification(n.title, hasLiveTripFromTracking))
+      .filter((n) => new Date(n.createdAt).getTime() >= todayMs)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, 10)
       .map((n) => ({
         id: n.id,
         title: n.title,
         time: n.time,
+        createdAt: n.createdAt,
         type: inferActivityType(n.title, n.message),
         description: n.message,
       }));

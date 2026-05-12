@@ -16,7 +16,6 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -37,7 +36,7 @@ import { useRoutePolyline, useRoadSnappedPolyline } from "../../_hooks/useRouteP
 import BusMarker from "./BusMarker";
 import FloatingInfoCard from "./FloatingInfoCard";
 import { DARK_MAP_STYLE } from "./mapStyles";
-import { normalizeTripStatus } from "../../../types/tracking";
+import { normalizeTripStatus, type GeoPoint } from "../../../types/tracking";
 
 const DEVIATION_THRESHOLD_METERS = 150;
 
@@ -137,11 +136,12 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
     if (liveBusCoord) lastKnownBusCoordRef.current = liveBusCoord;
   }, [liveBusCoord]);
 
-  const busCoord = useMemo<MapCoord | null>(() => {
-    if (liveBusCoord) return liveBusCoord;
-    if (isLocationStale) return lastKnownBusCoordRef.current;
-    return null;
-  }, [isLocationStale, liveBusCoord]);
+  const busCoord = useMemo<GeoPoint | null>(() => {
+    const base: MapCoord | null = liveBusCoord ?? (isLocationStale ? lastKnownBusCoordRef.current : null);
+    if (!base) return null;
+    const h = toFiniteNumber(segment?.heading);
+    return h != null ? { ...base, heading: h } : base;
+  }, [isLocationStale, liveBusCoord, segment?.heading]);
 
   const pickupCoord = useMemo<MapCoord | null>(() => {
     const la = toFiniteNumber(segment?.pickupStop?.latitude);
@@ -223,7 +223,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
   const markerState = useAnimatedBusMarker(busCoord);
 
   // Polyline splits (completed / remaining / bus-to-next) + deviation distance.
-  const { completedPolyline, remainingPolyline, busToNextLeg, deviationFromRoute } =
+  const { completedPolyline, remainingPolyline, deviationFromRoute } =
     useRoutePolyline(segment, busCoord, roadPolyline);
 
   const liveRemainingKm = useMemo(
@@ -402,6 +402,28 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
+        {/* ── Base stop-chain polyline — always visible as soon as stops are known.
+            Shows the planned route shape immediately; road-snapped lines render on top. ── */}
+        {!hasRoadPolyline && stopMapCoords.length >= 2 ? (
+          <>
+            <Polyline
+              coordinates={stopMapCoords}
+              strokeColor="#1E3A5F"
+              strokeWidth={7}
+              lineCap="round"
+              lineJoin="round"
+            />
+            <Polyline
+              coordinates={stopMapCoords}
+              strokeColor="#93C5FD"
+              strokeWidth={4}
+              lineCap="round"
+              lineJoin="round"
+              lineDashPattern={[12, 6]}
+            />
+          </>
+        ) : null}
+
         {/* ── Completed route segment — only rendered once the road-snapped route has loaded ── */}
         {/* Casing (border underneath for road-like contrast) */}
         {hasRoadPolyline && completedPolyline.length >= 2 ? (
@@ -457,11 +479,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
           >
             <View style={styles.stopLabelWrap}>
               <StopMarkerDot style="pickup" />
-              <View style={styles.stopLabelPill}>
-                <Text style={styles.stopLabelText} numberOfLines={1}>
-                  {segment.pickupStop?.name ?? "Your stop"}
-                </Text>
-              </View>
+              <StopLabel text={segment.pickupStop?.name ?? "Your stop"} stopStyle="pickup" />
             </View>
           </Marker>
         ) : null}
@@ -477,6 +495,8 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
               const displayName =
                 style === "pickup" && segment.pickupStop?.name
                   ? `${s.stopName} · Your stop`
+                  : style === "reached"
+                  ? `✓ ${s.stopName}`
                   : s.stopName;
               return (
                 <Marker
@@ -487,9 +507,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
                 >
                   <View style={styles.stopLabelWrap}>
                     <StopMarkerDot style={style} />
-                    <View style={[styles.stopLabelPill, style === "reached" && styles.stopLabelPillReached]}>
-                      <Text style={styles.stopLabelText} numberOfLines={1}>{displayName}</Text>
-                    </View>
+                    <StopLabel text={displayName} stopStyle={style} />
                   </View>
                 </Marker>
               );
@@ -502,6 +520,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
             markerState={markerState}
             title={isLocationStale ? "School bus (updating)" : "School bus"}
             isStale={isLocationStale}
+            speedKmh={segment?.speedKmh ?? null}
           />
         ) : null}
 
@@ -513,8 +532,11 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
             tracksViewChanges={false}
             anchor={{ x: 0.5, y: 0.5 }}
           >
-            <View style={styles.youMarkerOuter}>
-              <MaterialCommunityIcons name="account" size={18} color="#FFFFFF" />
+            <View style={styles.youMarkerContainer}>
+              <View style={styles.youMarkerPulse} />
+              <View style={styles.youMarkerOuter}>
+                <MaterialCommunityIcons name="account" size={18} color="#FFFFFF" />
+              </View>
             </View>
           </Marker>
         ) : null}
@@ -531,10 +553,20 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
       {/* Destination chip — Uber-style top bar showing next stop */}
       {nextStopName ? (
         <View style={styles.destChip} pointerEvents="none">
-          <MaterialCommunityIcons name="map-marker" size={14} color="#2563EB" />
-          <Text style={styles.destChipText} numberOfLines={1}>
-            {nextStopName}
-          </Text>
+          <View style={styles.destChipIconWrap}>
+            <MaterialCommunityIcons name="bus" size={15} color="#FFFFFF" />
+          </View>
+          <View style={styles.destChipTextWrap}>
+            <Text style={styles.destChipLabel}>Next stop</Text>
+            <Text style={styles.destChipText} numberOfLines={1}>
+              {nextStopName}
+            </Text>
+          </View>
+          {segment?.busNumber ? (
+            <View style={styles.busNumberBadge}>
+              <Text style={styles.busNumberText}>{segment.busNumber}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -553,7 +585,10 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
       {/* Off-route warning chip — shown when bus deviates > 150 m during an active trip */}
       {isOffRoute ? (
         <View style={styles.offRouteChip} pointerEvents="none">
-          <Text style={styles.offRouteChipText}>Bus off route</Text>
+          <View style={styles.offRouteChipInner}>
+            <MaterialCommunityIcons name="alert-circle" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
+            <Text style={styles.offRouteChipText}>Bus off route</Text>
+          </View>
         </View>
       ) : null}
 
@@ -580,6 +615,21 @@ function StopMarkerDot({ style }: { style: StopStyle }) {
   return (
     <View style={[styles.stopRing, { borderColor: c.ring, backgroundColor: c.ring }]}>
       <View style={[styles.stopDot, { backgroundColor: c.bg }]} />
+    </View>
+  );
+}
+
+function StopLabel({ text, stopStyle }: { text: string; stopStyle: StopStyle }) {
+  const stripeColors: Record<StopStyle, string> = {
+    reached: "#22C55E",
+    next: "#2563EB",
+    pickup: "#7C3AED",
+    upcoming: "#94A3B8",
+  };
+  return (
+    <View style={styles.stopLabelPill}>
+      <View style={[styles.stopLabelStripe, { backgroundColor: stripeColors[stopStyle] }]} />
+      <Text style={styles.stopLabelText} numberOfLines={1}>{text}</Text>
     </View>
   );
 }
@@ -611,6 +661,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
+  youMarkerContainer: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  youMarkerPulse: {
+    position: "absolute",
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#3B82F6",
+    opacity: 0.22,
+  },
   youMarkerOuter: {
     width: 34,
     height: 34,
@@ -618,43 +682,56 @@ const styles = StyleSheet.create({
     backgroundColor: "#0F172A",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 2,
+    borderWidth: 2.5,
     borderColor: "#FFFFFF",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   stopRing: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 2.5,
     alignItems: "center",
     justifyContent: "center",
   },
   stopDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   stopLabelWrap: {
     alignItems: "center",
   },
   stopLabelPill: {
-    marginTop: 3,
-    backgroundColor: "rgba(255,255,255,0.92)",
-    borderRadius: 6,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    maxWidth: 82,
+    marginTop: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderRadius: 8,
+    overflow: "hidden",
+    maxWidth: 96,
     borderWidth: 1,
-    borderColor: "rgba(37,99,235,0.2)",
+    borderColor: "rgba(0,0,0,0.08)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  stopLabelPillReached: {
-    borderColor: "rgba(34,197,94,0.2)",
+  stopLabelStripe: {
+    width: 3,
+    alignSelf: "stretch",
   },
   stopLabelText: {
     fontSize: 10,
     fontWeight: "600",
     color: "#1E293B",
-    textAlign: "center",
+    paddingHorizontal: 5,
+    paddingVertical: 3,
   },
   fab: {
     position: "absolute",
@@ -683,17 +760,23 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
+  offRouteChipInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F59E0B",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
   offRouteChipText: {
-    backgroundColor: "#FEF3C7",
-    color: "#92400E",
+    color: "#FFFFFF",
     fontWeight: "700",
     fontSize: 13,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 999,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#F59E0B",
   },
   routeLoadingChip: {
     position: "absolute",
@@ -722,22 +805,52 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     backgroundColor: "#FFFFFF",
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.15,
-    shadowRadius: 10,
+    shadowRadius: 12,
     elevation: 8,
   },
-  destChipText: {
+  destChipIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#2563EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  destChipTextWrap: {
     flex: 1,
+  },
+  destChipLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#94A3B8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  destChipText: {
     fontSize: 15,
     fontWeight: "700",
     color: "#0F172A",
+  },
+  busNumberBadge: {
+    backgroundColor: "#F1F5F9",
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+  },
+  busNumberText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#475569",
   },
 });

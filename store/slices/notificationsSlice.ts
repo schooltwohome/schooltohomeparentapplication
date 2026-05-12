@@ -22,6 +22,8 @@ export type NotificationRow = {
   title: string;
   message: string;
   time: string;
+  /** Raw ISO timestamp from the backend — used for date filtering and real-time display. */
+  createdAt: string;
   type: NotificationRowType;
   isRead: boolean;
   eventType: string | null;
@@ -34,6 +36,7 @@ function mapApi(n: ApiNotification): NotificationRow {
     title: n.title,
     message: n.message,
     time: formatRelativeTime(n.created_at),
+    createdAt: n.created_at,
     type: rowTypeFromEventType(et, n.title, n.message),
     isRead: n.is_read,
     eventType: et,
