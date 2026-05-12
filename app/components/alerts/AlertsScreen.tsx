@@ -33,7 +33,7 @@ export default function AlertsScreen() {
     if (categoryFilter === "all") return notifications;
     return notifications.filter((n) => {
       const cat = notificationCategory(n.eventType, n.title, n.message);
-      if (cat === "other") return categoryFilter === "all";
+      if (cat === "other") return false;
       return cat === categoryFilter;
     });
   }, [notifications, categoryFilter]);

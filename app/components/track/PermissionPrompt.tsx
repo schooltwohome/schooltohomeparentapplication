@@ -1,30 +1,116 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+  Platform,
+} from "react-native";
+import * as SecureStore from "expo-secure-store";
 import { MapPin } from "lucide-react-native";
+import LocationDisclosureModal from "../permissions/LocationDisclosureModal";
+
+const DISCLOSURE_KEY = "location_disclosure_seen_v1";
+
+async function getDisclosureSeen(): Promise<boolean> {
+  try {
+    if (Platform.OS === "web") {
+      const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
+      return ls?.getItem(DISCLOSURE_KEY) === "1";
+    }
+    const v = await SecureStore.getItemAsync(DISCLOSURE_KEY);
+    return v === "1";
+  } catch {
+    return false;
+  }
+}
+
+async function setDisclosureSeen(): Promise<void> {
+  try {
+    if (Platform.OS === "web") {
+      const ls = (globalThis as unknown as { localStorage?: Storage }).localStorage;
+      ls?.setItem(DISCLOSURE_KEY, "1");
+      return;
+    }
+    await SecureStore.setItemAsync(DISCLOSURE_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
 
 interface PermissionPromptProps {
-  onGrantPermission: () => void;
+  onGrantPermission: () => void | Promise<void>;
   isLoading: boolean;
 }
 
 export default function PermissionPrompt({ onGrantPermission, isLoading }: PermissionPromptProps) {
+  const [ready, setReady] = useState(false);
+  const [showDisclosure, setShowDisclosure] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const seen = await getDisclosureSeen();
+      if (!cancelled) {
+        setShowDisclosure(!seen);
+        setReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleNotNow = useCallback(async () => {
+    await setDisclosureSeen();
+    setShowDisclosure(false);
+  }, []);
+
+  const handleContinue = useCallback(async () => {
+    await setDisclosureSeen();
+    setShowDisclosure(false);
+    await onGrantPermission();
+  }, [onGrantPermission]);
+
+  if (!ready) {
+    return (
+      <View style={[styles.container, styles.centerOnly]}>
+        <ActivityIndicator size="large" color="#0F172A" />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <MapPin size={48} color="#3B82F6" />
-      </View>
-      <Text style={styles.title}>Enable Location</Text>
-      <Text style={styles.description}>
-        We need access to your location to show you where the bus is relative to you, ensuring maximum safety and accurate tracking.
-      </Text>
-      
-      <TouchableOpacity 
-        style={[styles.button, isLoading && styles.buttonDisabled]} 
-        onPress={onGrantPermission}
-        disabled={isLoading}
-      >
-        <Text style={styles.buttonText}>{isLoading ? "Requesting..." : "Allow Location Access"}</Text>
-      </TouchableOpacity>
+      <LocationDisclosureModal
+        visible={showDisclosure}
+        onNotNow={handleNotNow}
+        onContinue={handleContinue}
+      />
+
+      {!showDisclosure ? (
+        <>
+          <View style={styles.iconContainer}>
+            <MapPin size={48} color="#3B82F6" />
+          </View>
+          <Text style={styles.title}>Enable Location</Text>
+          <Text style={styles.description}>
+            We need access to your location to show you where the bus is relative to you, ensuring
+            maximum safety and accurate tracking.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.button, isLoading && styles.buttonDisabled]}
+            onPress={() => void onGrantPermission()}
+            disabled={isLoading}
+          >
+            <Text style={styles.buttonText}>
+              {isLoading ? "Requesting..." : "Allow Location Access"}
+            </Text>
+          </TouchableOpacity>
+        </>
+      ) : null}
     </View>
   );
 }
@@ -36,6 +122,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#F8FAFC",
+  },
+  centerOnly: {
+    justifyContent: "center",
   },
   iconContainer: {
     width: 96,

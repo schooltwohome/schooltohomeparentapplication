@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { View, StyleSheet, Text, ActivityIndicator } from "react-native";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { Alert, View, StyleSheet, Text, ActivityIndicator } from "react-native";
 import * as Location from "expo-location";
 import { useFocusEffect } from "expo-router";
 import LiveMap from "./LiveMap";
@@ -10,7 +10,12 @@ import {
   getParentTracking,
   type TrackingSegment,
 } from "../../../services/parentApi";
-import { useParentTrackingRealtime } from "../../hooks/useParentTrackingRealtime";
+import {
+  useParentTrackingRealtime,
+  type LiveLocationPush,
+  type BusArrivingPush,
+} from "../../_hooks/useParentTrackingRealtime";
+import { normalizeTripStatus } from "../../../types/tracking";
 
 /** UI poll interval. GPS freshness (`locationAgeSeconds`) depends on driver uploads + backend persistence, not this interval. */
 const POLL_MS = 15000;
@@ -28,9 +33,15 @@ export default function TrackScreen() {
     longitude: number;
   } | null>(null);
   const [segments, setSegments] = useState<TrackingSegment[]>([]);
+  const [liveOverride, setLiveOverride] = useState<LiveLocationPush | null>(null);
+  const activeTripIdRef = useRef<string | null>(null);
   const [trackLoading, setTrackLoading] = useState(true);
   const [trackError, setTrackError] = useState<string | null>(null);
   const [screenFocused, setScreenFocused] = useState(true);
+  const refreshSeqRef = useRef(0);
+  const alertedTripIdRef = useRef<string | null>(null);
+  // Deduplicate socket-based arriving alerts: key = tripId-stopId
+  const alertedArrivingKeysRef = useRef<Set<string>>(new Set());
 
   useFocusEffect(
     useCallback(() => {
@@ -48,6 +59,34 @@ export default function TrackScreen() {
     );
     return withGps ?? segments[0];
   }, [segments]);
+
+  // Clear liveOverride whenever the active trip changes so stale socket coordinates
+  // from a previous trip never bleed into the next one's display.
+  useEffect(() => {
+    const currentTripId = primarySegment?.tripId ?? null;
+    if (currentTripId !== activeTripIdRef.current) {
+      activeTripIdRef.current = currentTripId;
+      setLiveOverride(null);
+    }
+  }, [primarySegment?.tripId]);
+
+  // Merge socket coordinate push into the segment so the marker moves before the next HTTP poll.
+  const effectivePrimarySegment = useMemo<TrackingSegment | null>(() => {
+    if (!primarySegment) return null;
+    if (!liveOverride) return primarySegment;
+    if (liveOverride.busId !== primarySegment.busId) return primarySegment;
+    const segTs = primarySegment.lastFixAt ? Date.parse(primarySegment.lastFixAt) : 0;
+    if (liveOverride.ts <= segTs) return primarySegment;
+    return {
+      ...primarySegment,
+      latitude: liveOverride.latitude,
+      longitude: liveOverride.longitude,
+      heading: liveOverride.heading ?? primarySegment.heading,
+      speedKmh:
+        liveOverride.speedKmh != null ? liveOverride.speedKmh : primarySegment.speedKmh,
+      lastFixAt: new Date(liveOverride.ts).toISOString(),
+    };
+  }, [primarySegment, liveOverride]);
 
   const freshnessUi = useMemo(() => {
     if (!primarySegment) {
@@ -67,24 +106,65 @@ export default function TrackScreen() {
     return { isStale: true, staleLabel: "Location updating..." };
   }, [primarySegment]);
 
+  const staleMinutesInfo = useMemo(() => {
+    const age = primarySegment?.locationAgeSeconds;
+    const shouldShow =
+      trackLoading === false &&
+      trackError === null &&
+      primarySegment?.isLocationStale === true &&
+      typeof age === "number" &&
+      Number.isFinite(age) &&
+      age > 60;
+    if (!shouldShow || typeof age !== "number") return null;
+    return Math.round(age / 60);
+  }, [
+    primarySegment?.isLocationStale,
+    primarySegment?.locationAgeSeconds,
+    trackError,
+    trackLoading,
+  ]);
+
   const loadTracking = useCallback(async () => {
     if (!token) {
       setSegments([]);
       setTrackLoading(false);
       return;
     }
+    const requestSeq = ++refreshSeqRef.current;
     try {
       setTrackError(null);
       const data = await getParentTracking(token);
+      if (requestSeq !== refreshSeqRef.current) return;
       const nextSegments = data.segments ?? [];
       if (__DEV__) {
         console.log("[TrackScreen] fetched tracking segments:", nextSegments.length);
       }
       setSegments(nextSegments);
+
+      // FIX 10: Arrival alert — fire once per trip when bus is within 500 m of pickup.
+      const arrivingSeg = nextSegments.find((seg) => {
+        const status = normalizeTripStatus(seg.tripStatus);
+        return (
+          typeof seg.distanceToPickupKm === "number" &&
+          seg.distanceToPickupKm <= 0.5 &&
+          seg.distanceToPickupKm > 0 &&
+          seg.hasReachedPickup === false &&
+          (status === "started" || status === "returning")
+        );
+      });
+      if (arrivingSeg?.tripId && arrivingSeg.tripId !== alertedTripIdRef.current) {
+        alertedTripIdRef.current = arrivingSeg.tripId;
+        Alert.alert(
+          "Bus Arriving Soon",
+          "Your child's bus is less than 500m away. Please be ready at the stop."
+        );
+      }
     } catch (e: unknown) {
+      if (requestSeq !== refreshSeqRef.current) return;
       setTrackError(e instanceof Error ? e.message : "Could not load tracking");
       setSegments([]);
     } finally {
+      if (requestSeq !== refreshSeqRef.current) return;
       setTrackLoading(false);
     }
   }, [token]);
@@ -97,11 +177,23 @@ export default function TrackScreen() {
     return [...ids];
   }, [segments]);
 
+  const handleArrivingPush = useCallback((data: BusArrivingPush) => {
+    const key = `${data.tripId}-${data.stopId}`;
+    if (alertedArrivingKeysRef.current.has(key)) return;
+    alertedArrivingKeysRef.current.add(key);
+    Alert.alert(
+      "Bus Arriving Soon",
+      `${data.studentName}'s bus is about ${data.etaMinutes} min away from ${data.stopName}. Please be ready at the stop.`
+    );
+  }, []);
+
   useParentTrackingRealtime(
     token,
     liveBusIds,
     loadTracking,
-    Boolean(token && hasPermission === true && screenFocused)
+    Boolean(token && hasPermission === true && screenFocused),
+    setLiveOverride,
+    handleArrivingPush
   );
 
   useEffect(() => {
@@ -196,14 +288,21 @@ export default function TrackScreen() {
           <Text style={styles.bannerText}>{trackError}</Text>
         </View>
       ) : null}
+      {staleMinutesInfo !== null ? (
+        <View style={styles.infoWrap}>
+          <Text style={styles.infoText}>
+            Bus location is {staleMinutesInfo} minutes old. Updates resume when the driver is online.
+          </Text>
+        </View>
+      ) : null}
       <LiveMap
-        segment={primarySegment}
+        segment={effectivePrimarySegment}
         userLocation={userLocation}
         isLocationStale={freshnessUi.isStale}
         staleLabel={freshnessUi.staleLabel}
       />
       <BusStatusPanel
-        segment={primarySegment}
+        segment={effectivePrimarySegment}
         allSegments={segments}
         loading={trackLoading}
         staleLabel={freshnessUi.staleLabel}
@@ -232,6 +331,16 @@ const styles = StyleSheet.create({
   bannerText: {
     color: "#B91C1C",
     fontSize: 13,
+    textAlign: "center",
+  },
+  infoWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+  },
+  infoText: {
+    color: "#475569",
+    fontSize: 12,
     textAlign: "center",
   },
 });

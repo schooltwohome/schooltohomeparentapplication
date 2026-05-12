@@ -1,21 +1,78 @@
+const fs = require("fs");
+const path = require("path");
+
+/** Project root — same as `__dirname` for this file; avoids `__dirname` missing under some ESLint/env setups. */
+const APP_ROOT = path.dirname(require.resolve("./package.json"));
+
+/** Read PNG width/height from IHDR without extra dependencies. */
+function readPngDimensions(filePath) {
+  try {
+    const buf = fs.readFileSync(filePath);
+    if (buf.length < 24) return null;
+    if (buf[0] !== 0x89 || buf[1] !== 0x50 || buf[2] !== 0x4e || buf[3] !== 0x47) {
+      return null;
+    }
+    const width = buf.readUInt32BE(16);
+    const height = buf.readUInt32BE(20);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return null;
+    return { width, height };
+  } catch {
+    return null;
+  }
+}
+
+function warnIfIconBelow(root, relPath, minW, minH, label) {
+  const full = path.join(root, relPath);
+  if (!fs.existsSync(full)) {
+    console.warn(`[app.config] ${label}: missing file ${relPath}`);
+    return;
+  }
+  const dim = readPngDimensions(full);
+  if (!dim) {
+    console.warn(`[app.config] ${label}: could not read dimensions for ${relPath}`);
+    return;
+  }
+  if (dim.width < minW || dim.height < minH) {
+    console.warn(
+      `[app.config] ${label}: ${relPath} is ${dim.width}×${dim.height}; require at least ${minW}×${minH}`
+    );
+  }
+}
+
+(function warnAdaptiveIcons() {
+  warnIfIconBelow(APP_ROOT, "assets/images/icon.png", 1024, 1024, "App icon");
+  for (const rel of [
+    "assets/images/android-icon-foreground.png",
+    "assets/images/android-icon-background.png",
+    "assets/images/android-icon-monochrome.png",
+  ]) {
+    warnIfIconBelow(APP_ROOT, rel, 432, 432, "Android adaptive icon");
+  }
+})();
+
 module.exports = ({ config }) => {
-  const googleMapsKey =
-    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
+  const googleMapsApiKeyExtra =
+    process.env.GOOGLE_MAPS_API_KEY?.trim() || undefined;
+  const googleMapsIosKey =
     process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
-    "AIzaSyAnjJcugrzeD5rNrj5WFwLAV6wUTrF_Ag4";
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    undefined;
+  const googleMapsAndroidKey =
+    process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_API_KEY?.trim() ||
+    undefined;
 
   return {
     ...(config || {}),
     name: "SchoolToHome",
-    slug: "SchoolToHome",
+    /** Must match slug of the Expo project for `extra.eas.projectId` (see expo.dev project settings). */
+    slug: "schoolToHomeParentApp",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/images/icon.png",
     scheme: "SchoolToHomeParentApp",
     userInterfaceStyle: "automatic",
 
-    
     newArchEnabled: true,
 
     ios: {
@@ -23,10 +80,7 @@ module.exports = ({ config }) => {
       ...((config && config.ios) || {}),
       config: {
         ...(((config && config.ios) || {}).config || {}),
-        googleMapsApiKey:
-          process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
-          process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-          googleMapsKey,
+        googleMapsApiKey: googleMapsIosKey,
       },
     },
 
@@ -47,18 +101,14 @@ module.exports = ({ config }) => {
 
       package: "com.school2home.schoolToHomeParentApp",
 
-      
-      newArchEnabled: true,
-
       ...((config && config.android) || {}),
+      versionCode: 1,
+      blockedPermissions: [],
       config: {
         ...(((config && config.android) || {}).config || {}),
         googleMaps: {
           ...((((config && config.android) || {}).config || {}).googleMaps || {}),
-          apiKey:
-            process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
-            process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-            googleMapsKey,
+          apiKey: googleMapsAndroidKey,
         },
       },
     },
@@ -114,12 +164,12 @@ module.exports = ({ config }) => {
     },
 
     extra: {
-      apiUrl: "https://apidev.school2home.in",
-      // LAN IP your phone uses to reach this machine (Wi‑Fi). Not 192.168.122.x (often libvirt/VM bridge).
-      // apiUrl: "http://192.168.72.162:8080",
+      apiUrl:
+        process.env.EXPO_PUBLIC_API_URL ?? "https://apidev.school2home.in",
+      // Socket.IO origin — falls back to apiUrl when EXPO_PUBLIC_SOCKET_IO_URL is unset (see lib/config.ts).
+      socketIoUrl: process.env.EXPO_PUBLIC_SOCKET_IO_URL?.trim() || undefined,
 
-    
-      googleMapsApiKey: googleMapsKey,
+      googleMapsApiKey: googleMapsApiKeyExtra,
 
       router: {},
 

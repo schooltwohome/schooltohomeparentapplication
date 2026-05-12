@@ -7,6 +7,7 @@ import {
   LogOut,
   Users,
   ShieldCheck,
+  Trash2,
 } from "lucide-react-native";
 import { useRouter } from "expo-router";
 import ProfileInfoCard, { useProfileInfoFromParent } from "./ProfileInfoCard";
@@ -27,6 +28,7 @@ import {
   getPushPermissionStatus,
   type PushPermissionStatus,
 } from "../../../lib/pushNotifications";
+import { deleteAccount } from "./deleteAccount";
 
 const CARD_WIDTH = 220;
 const CARD_MARGIN = 16;
@@ -36,7 +38,9 @@ export default function ProfileScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const profile = useAppSelector((s) => s.auth.profile);
+  const token = useAppSelector((s) => s.auth.token);
   const children = useAppSelector((s) => s.auth.children);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [isChildModalVisible, setIsChildModalVisible] = useState(false);
   const [selectedChild, setSelectedChild] = useState<UiChild | null>(null);
   const [pushModalOpen, setPushModalOpen] = useState(false);
@@ -80,6 +84,46 @@ export default function ProfileScreen() {
           onPress: async () => {
             await dispatch(logoutThunk());
             router.replace("/screens/Auth/LoginScreen" as any);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Delete account",
+      "This will permanently delete your account and all child profiles. This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            if (!token) return;
+            setDeleteBusy(true);
+            try {
+              const result = await deleteAccount(token);
+              if (result.status === "missing_endpoint") {
+                await new Promise<void>((resolve) => {
+                  Alert.alert(
+                    "",
+                    "Account deletion request received. We will email you within 72 hours.",
+                    [{ text: "OK", onPress: () => resolve() }]
+                  );
+                });
+              } else if (result.status === "error") {
+                await new Promise<void>((resolve) => {
+                  Alert.alert("Could not complete deletion", result.message, [
+                    { text: "OK", onPress: () => resolve() },
+                  ]);
+                });
+              }
+              await dispatch(logoutThunk());
+              router.replace("/screens/Auth/LoginScreen" as any);
+            } finally {
+              setDeleteBusy(false);
+            }
           },
         },
       ]
@@ -217,6 +261,14 @@ export default function ProfileScreen() {
         <View style={styles.logoutSection}>
           <Text style={styles.logoutCaption}>Session</Text>
           <View style={styles.logoutCard}>
+            <SettingsItem
+              icon={Trash2}
+              label="Delete account"
+              subtitle={deleteBusy ? "Working…" : undefined}
+              onPress={deleteBusy ? undefined : handleDeleteAccount}
+              isDestructive={true}
+              showChevron={false}
+            />
             <SettingsItem
               icon={LogOut}
               label="Sign out"

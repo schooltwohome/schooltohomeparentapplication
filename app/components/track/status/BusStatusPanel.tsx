@@ -34,7 +34,7 @@ export default function BusStatusPanel({
   userLocation,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const translateY = useSharedValue(SCREEN_HEIGHT - MID_HEIGHT);
+  const translateY = useSharedValue(SCREEN_HEIGHT - MIN_HEIGHT);
   const context = useSharedValue({ y: 0 });
 
   const snapPoints = useMemo(

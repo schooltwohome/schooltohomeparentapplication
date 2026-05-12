@@ -140,6 +140,8 @@ export type TrackingSegment = {
   locationAgeSeconds?: number | null;
   latitude: number | null;
   longitude: number | null;
+  /** GPS compass heading in degrees 0–360 from the driver device; null when unavailable. */
+  heading?: number | null;
   distanceToPickupKm: number | null;
   etaMinutes: number | null;
   pickupStop: {

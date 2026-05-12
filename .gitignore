@@ -32,6 +32,7 @@ yarn-error.*
 
 # local env files (LAN IP for device testing — do not commit)
 .env*
+!.env.example
 .env*.local
 
 # typescript
