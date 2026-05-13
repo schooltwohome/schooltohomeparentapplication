@@ -14,7 +14,7 @@ import {
   consumePendingPushNavigation,
   fetchNotifications,
 } from "../store/slices/notificationsSlice";
-import { getParentTracking } from "../services/parentApi";
+import { getParentTracking, type TrackingSegment } from "../services/parentApi";
 
 export default function HomeScreen() {
   const dispatch = useAppDispatch();
@@ -27,14 +27,17 @@ export default function HomeScreen() {
   const notificationItems = useAppSelector((s) => s.notifications.items);
 
   const [hasLiveTripFromTracking, setHasLiveTripFromTracking] = useState(false);
+  const [trackingSegments, setTrackingSegments] = useState<TrackingSegment[]>([]);
 
   const refreshLiveTrip = useCallback(async () => {
     if (!authToken) {
       setHasLiveTripFromTracking(false);
+      setTrackingSegments([]);
       return;
     }
     try {
       const { segments } = await getParentTracking(authToken);
+      setTrackingSegments(segments);
       setHasLiveTripFromTracking(
         segments.some(
           (s) => s.tripStatus === "scheduled" || s.tripStatus === "on_going"
@@ -42,6 +45,7 @@ export default function HomeScreen() {
       );
     } catch {
       setHasLiveTripFromTracking(false);
+      setTrackingSegments([]);
     }
   }, [authToken]);
 
@@ -90,6 +94,7 @@ export default function HomeScreen() {
           <HomeDashboard
             onOpenTrack={() => setActiveTab("track")}
             hasLiveTripFromTracking={hasLiveTripFromTracking}
+            trackingSegments={trackingSegments}
           />
         )}
         {activeTab === "track" && <TrackScreen />}

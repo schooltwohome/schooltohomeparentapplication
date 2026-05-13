@@ -161,6 +161,8 @@ export type TrackingSegment = {
   nextStopId: string | null;
   hasReachedPickup: boolean;
   pickupReachedAt: string | null;
+  /** True when the helper has marked this student as boarded on the current trip. */
+  isOnBus?: boolean;
 };
 
 export function getParentTracking(token: string) {

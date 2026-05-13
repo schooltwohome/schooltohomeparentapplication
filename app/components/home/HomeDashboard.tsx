@@ -8,16 +8,18 @@ import {
   inferActivityType,
   isStaleTripStartNotification,
 } from "../../../lib/notificationUi";
+import type { TrackingSegment } from "../../../services/parentApi";
 
 type Props = {
   onOpenTrack?: () => void;
-  /** From parent tracking snapshot — hides stale “trip starting” when no active trip. */
   hasLiveTripFromTracking: boolean;
+  trackingSegments?: TrackingSegment[];
 };
 
 export default function HomeDashboard({
   onOpenTrack,
   hasLiveTripFromTracking,
+  trackingSegments = [],
 }: Props) {
   const children = useAppSelector((s) => s.auth.children);
   const notificationItems = useAppSelector((s) => s.notifications.items);
@@ -50,6 +52,14 @@ export default function HomeDashboard({
         description: n.message,
       }));
   }, [notificationItems, hasLiveTripFromTracking]);
+
+  const segmentByStudentUuid = useMemo(() => {
+    const map = new Map<string, TrackingSegment>();
+    for (const seg of trackingSegments) {
+      map.set(seg.studentUuid, seg);
+    }
+    return map;
+  }, [trackingSegments]);
 
   return (
     <ScrollView
@@ -92,14 +102,18 @@ export default function HomeDashboard({
           </Text>
         </View>
       ) : (
-        children.map((c) => (
-          <ChildStatusCard
-            key={c.id}
-            name={c.name}
-            className={c.grade ? `Grade ${c.grade}` : "—"}
-            isOnBus={false}
-          />
-        ))
+        children.map((c) => {
+          const seg = segmentByStudentUuid.get(c.id);
+          const isOnBus = seg?.isOnBus === true;
+          return (
+            <ChildStatusCard
+              key={c.id}
+              name={c.name}
+              className={c.grade ? `Grade ${c.grade}` : "—"}
+              isOnBus={isOnBus}
+            />
+          );
+        })
       )}
 
       <ActivityTimeline activities={activities} />
