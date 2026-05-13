@@ -106,6 +106,19 @@ export default function TrackScreen() {
     return { isStale: true, staleLabel: "Location updating..." };
   }, [primarySegment]);
 
+  // True when the trip is active but we have never received GPS coordinates.
+  // Different from "stale" (which means coordinates were received but are old).
+  // Used to show "GPS signal not yet available" banners in the UI.
+  const gpsUnavailable = useMemo(() => {
+    if (!effectivePrimarySegment) return false;
+    const hasCoords =
+      isFiniteNumber(effectivePrimarySegment.latitude) &&
+      isFiniteNumber(effectivePrimarySegment.longitude);
+    if (hasCoords) return false;
+    const status = normalizeTripStatus(effectivePrimarySegment.tripStatus);
+    return status === "started" || status === "returning";
+  }, [effectivePrimarySegment]);
+
   const staleMinutesInfo = useMemo(() => {
     const age = primarySegment?.locationAgeSeconds;
     const shouldShow =
@@ -300,6 +313,7 @@ export default function TrackScreen() {
         userLocation={userLocation}
         isLocationStale={freshnessUi.isStale}
         staleLabel={freshnessUi.staleLabel}
+        gpsUnavailable={gpsUnavailable}
       />
       <BusStatusPanel
         segment={effectivePrimarySegment}

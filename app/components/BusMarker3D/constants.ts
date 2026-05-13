@@ -35,9 +35,9 @@ export const SVG_WIDTH = 120;
 /** Total SVG viewBox height in user units. */
 export const SVG_HEIGHT = 80;
 /** Rendered pixel width of the SVG element. */
-export const SVG_RENDER_W = 150;
+export const SVG_RENDER_W = 252;
 /** Rendered pixel height of the SVG element. */
-export const SVG_RENDER_H = 100;
+export const SVG_RENDER_H = 168;
 
 // ─── Animation config ────────────────────────────────────────────────────────
 

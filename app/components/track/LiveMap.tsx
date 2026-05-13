@@ -94,6 +94,8 @@ type Props = {
   userLocation: MapCoord | null;
   isLocationStale: boolean;
   staleLabel: string | null;
+  /** True when a trip is active but no GPS coordinates have been received yet. */
+  gpsUnavailable?: boolean;
 };
 
 type StopStyle = "reached" | "next" | "pickup" | "upcoming";
@@ -121,7 +123,7 @@ function busStatusLabel(tripStatus: string | null | undefined): string {
   }
 }
 
-export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel }: Props) {
+export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel, gpsUnavailable = false }: Props) {
   const mapRef = useRef<MapView | null>(null);
   const lastKnownBusCoordRef = useRef<MapCoord | null>(null);
 
@@ -603,6 +605,16 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         </View>
       ) : null}
 
+      {/* GPS unavailable chip — shown when trip is active but bus coordinates are not yet available */}
+      {gpsUnavailable ? (
+        <View style={styles.noGpsChip} pointerEvents="none">
+          <View style={styles.noGpsChipInner}>
+            <MaterialCommunityIcons name="crosshairs-off" size={14} color="#FFFFFF" style={{ marginRight: 5 }} />
+            <Text style={styles.noGpsChipText}>Waiting for bus GPS signal…</Text>
+          </View>
+        </View>
+      ) : null}
+
       {/* Floating info card — positioned above the FAB area */}
       <FloatingInfoCard
         segment={segment}
@@ -610,6 +622,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         staleLabel={staleLabel}
         liveEtaMinutes={liveEtaMinutes}
         liveRemainingKm={liveRemainingKm}
+        gpsUnavailable={gpsUnavailable}
       />
     </View>
   );
@@ -863,5 +876,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
     color: "#475569",
+  },
+  noGpsChip: {
+    position: "absolute",
+    bottom: 210,
+    alignSelf: "center",
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  noGpsChipInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#64748B",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  noGpsChipText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 13,
   },
 });

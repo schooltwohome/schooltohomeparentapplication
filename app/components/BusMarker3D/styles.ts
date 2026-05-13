@@ -27,18 +27,18 @@ const styles = StyleSheet.create({
    *
    * Badge rect in viewBox "-10 -20 120 80": x=29, y=-9, w=22, h=12
    * Badge centre (viewBox): cx=40, cy=-3
-   * viewBox scale to rendered 150×100:
-   *   scaleX = 150/120 = 1.25,  scaleY = 100/80 = 1.25
-   * Badge rendered centre: x=(40-(-10))*1.25=62.5, y=(-3-(-20))*1.25=21.25
-   * Ring r≈13 → top=8, left=50, width=26, height=26
+   * viewBox scale to rendered 252×168:
+   *   scaleX = 252/120 = 2.1,  scaleY = 168/80 = 2.1
+   * Badge rendered centre: x=(40-(-10))*2.1=105, y=(-3-(-20))*2.1=35.7
+   * Ring r≈22 → top=14, left=84, width=44, height=44
    */
   onlineRing: {
     position: "absolute",
-    top: 8,
-    left: 50,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    top: 14,
+    left: 84,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     borderWidth: 2,
     borderColor: "#22C55E",
     backgroundColor: "transparent",

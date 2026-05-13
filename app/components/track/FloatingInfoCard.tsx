@@ -18,6 +18,8 @@ type Props = {
   staleLabel: string | null;
   liveEtaMinutes?: number | null;
   liveRemainingKm?: number | null;
+  /** True when a trip is active but no GPS coordinates have been received yet. */
+  gpsUnavailable?: boolean;
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -41,6 +43,7 @@ export default function FloatingInfoCard({
   staleLabel,
   liveEtaMinutes,
   liveRemainingKm,
+  gpsUnavailable = false,
 }: Props) {
   const slideAnim = useRef(new Animated.Value(120)).current;
   const arrivingPulse = useRef(new Animated.Value(1)).current;
@@ -122,6 +125,13 @@ export default function FloatingInfoCard({
         <View style={styles.staleBanner}>
           <MaterialCommunityIcons name="wifi-off" size={13} color="#1D4ED8" style={{ marginRight: 5 }} />
           <Text style={styles.staleBannerText}>{staleLabel}</Text>
+        </View>
+      ) : null}
+
+      {gpsUnavailable && !isStale ? (
+        <View style={styles.noGpsBanner}>
+          <MaterialCommunityIcons name="crosshairs-off" size={13} color="#92400E" style={{ marginRight: 5 }} />
+          <Text style={styles.noGpsBannerText}>Bus GPS signal not yet available</Text>
         </View>
       ) : null}
 
@@ -257,6 +267,21 @@ const styles = StyleSheet.create({
   },
   staleBannerText: {
     color: "#1D4ED8",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  noGpsBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEF3C7",
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 10,
+  },
+  noGpsBannerText: {
+    color: "#92400E",
     fontSize: 12,
     fontWeight: "600",
   },

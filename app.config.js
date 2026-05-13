@@ -52,15 +52,15 @@ function warnIfIconBelow(root, relPath, minW, minH, label) {
 
 module.exports = ({ config }) => {
   const googleMapsApiKeyExtra =
-    process.env.GOOGLE_MAPS_API_KEY?.trim() || undefined;
+    process.env.GOOGLE_MAPS_API_KEY?.trim() || "AIzaSyAnjJcugrzeD5rNrj5WFwLAV6wUTrF_Ag4";
   const googleMapsIosKey =
-    process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_IOS_API_KEY?.trim() || 
     process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    undefined;
+    "AIzaSyAnjJcugrzeD5rNrj5WFwLAV6wUTrF_Ag4";
   const googleMapsAndroidKey =
     process.env.GOOGLE_MAPS_ANDROID_API_KEY?.trim() ||
     process.env.GOOGLE_MAPS_API_KEY?.trim() ||
-    undefined;
+    "AIzaSyAnjJcugrzeD5rNrj5WFwLAV6wUTrF_Ag4";
 
   return {
     ...(config || {}),
@@ -173,7 +173,7 @@ module.exports = ({ config }) => {
 
       router: {},
 
-      eas: {
+      eas: {  
         projectId: "54899e3a-0c2b-456e-a093-20ed9e0e1b90",
       },
     },
