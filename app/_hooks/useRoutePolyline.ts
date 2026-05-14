@@ -4,6 +4,10 @@ import type { MapCoord } from "../components/track/trackMapGeometry";
 import { coordFromStopRow } from "../components/track/trackMapGeometry";
 import { deviationMeters } from "../../lib/geo";
 import { fetchDrivingDirections } from "../../lib/googleDirections";
+import {
+  nearestPointOnSegment,
+  splitRouteAtBusPosition,
+} from "../_utils/routeSplit";
 
 export const DEVIATION_THRESHOLD_METERS = 150;
 /** Minimum milliseconds between reroute fetches to avoid spamming Directions API. */
@@ -13,7 +17,7 @@ export type RoutePolylineResult = {
   /** Full route polyline in stop order — used as the base path on the map. */
   fullPolyline: MapCoord[];
   /** Stops already visited — rendered in a muted colour to show progress. */
-  completedPolyline: MapCoord[];
+  coveredPolyline: MapCoord[];
   /** Remaining stops from the current position — rendered in the primary colour. */
   remainingPolyline: MapCoord[];
   /** Short dashed segment from the live bus position to the next stop. */
@@ -34,18 +38,6 @@ function isValidCoord(c: MapCoord): boolean {
     c.longitude >= -180 &&
     c.longitude <= 180
   );
-}
-
-/** Haversine distance between two MapCoords in metres (used for road-snapped split). */
-function haversineMetersCoord(a: MapCoord, b: MapCoord): number {
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(b.latitude - a.latitude);
-  const dLon = toRad(b.longitude - a.longitude);
-  const h =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.sin(dLon / 2) * Math.sin(dLon / 2) *
-      Math.cos(toRad(a.latitude)) * Math.cos(toRad(b.latitude));
-  return 2 * 6_371_000 * Math.asin(Math.sqrt(h));
 }
 
 /**
@@ -71,7 +63,6 @@ export function useRoadSnappedPolyline(
 
   const stopKey = useMemo(
     () => stopCoords.map((c) => `${c.latitude.toFixed(5)},${c.longitude.toFixed(5)}`).join("|"),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [stopCoords]
   );
 
@@ -162,80 +153,44 @@ export function useRoutePolyline(
         if (c) acc.push(c);
         return acc;
       }, []);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segment?.routeStops]);
+
+  const routeStopIdsKey = useMemo(
+    () => segment?.routeStops?.map((s) => s.id).join(",") ?? "",
+    [segment?.routeStops]
+  );
 
   useEffect(() => {
     maxSplitIdxRef.current = 0;
-  }, [segment?.routeId ?? segment?.routeStops?.map(s => s.id).join(',')]);
+  }, [routeStopIdsKey]);
 
   const hasRoadPolyline = (roadPolyline?.length ?? 0) >= 2;
   const basePolyline = hasRoadPolyline ? roadPolyline! : fullPolyline;
 
-  /**
-   * Finds the nearest segment of `poly` to `target` using perpendicular projection
-   * with a cos(lat) longitude correction so the geometry is correct on a sphere.
-   *
-   * Without this correction the projection is done in raw lat/lon space: at 20–30 °N
-   * (India) a 1 ° longitude is ~15 % shorter than a 1 ° latitude, producing a split
-   * point that drifts sideways. The fix scales longitudes by cos(midLat) before
-   * computing the dot product, then un-scales the projected x back to degrees.
-   */
-  function nearestSegmentSplit(
-    poly: MapCoord[],
-    target: MapCoord
-  ): { idx: number; proj: MapCoord } {
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    let bestProj: MapCoord = poly[0];
-
-    for (let i = 0; i < poly.length - 1; i++) {
-      const a = poly[i];
-      const b = poly[i + 1];
-      // Use the mid-latitude of the segment for the cos correction.
-      const midLat = (a.latitude + b.latitude) / 2;
-      const cosLat = Math.cos((midLat * Math.PI) / 180);
-
-      const ax = a.longitude * cosLat, ay = a.latitude;
-      const bx = b.longitude * cosLat, by = b.latitude;
-      const px = target.longitude * cosLat, py = target.latitude;
-
-      const dx = bx - ax, dy = by - ay;
-      const lenSq = dx * dx + dy * dy;
-      const t = lenSq === 0 ? 0 : Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
-      // Project back from the scaled coordinate space to lat/lon degrees.
-      const projLat = ay + t * dy;
-      const projLon = cosLat === 0 ? a.longitude : (ax + t * dx) / cosLat;
-      const proj: MapCoord = { latitude: projLat, longitude: projLon };
-      const dist = haversineMetersCoord(target, proj);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-        bestProj = proj;
-      }
-    }
-    return { idx: bestIdx, proj: bestProj };
-  }
-
-  const { completedPolyline, remainingPolyline } = useMemo<{
-    completedPolyline: MapCoord[];
+  const { coveredPolyline, remainingPolyline } = useMemo<{
+    coveredPolyline: MapCoord[];
     remainingPolyline: MapCoord[];
   }>(() => {
     if (!segment?.routeStops?.length || !basePolyline.length) {
-      return { completedPolyline: [], remainingPolyline: basePolyline };
+      return { coveredPolyline: [], remainingPolyline: basePolyline };
     }
 
     // Priority 1 — live bus position known.
     // Split at the nearest point on the active base polyline (road-snapped when
     // available, otherwise stop-chain) for real-time Uber-style progress.
     if (busCoord && isValidCoord(busCoord) && basePolyline.length >= 2) {
-      const { idx, proj } = nearestSegmentSplit(basePolyline, busCoord);
-      // Monotonicity: split can only advance forward, never jump backward due to GPS jitter
-      const effectiveIdx = Math.max(maxSplitIdxRef.current, idx);
+      const split = splitRouteAtBusPosition(basePolyline, busCoord);
+      const rawIdx = Math.max(0, split.covered.length - 2);
+      // Monotonicity: split can only advance forward, never jump backward due to GPS jitter.
+      const effectiveIdx = Math.max(maxSplitIdxRef.current, rawIdx);
+      const projectedPoint =
+        effectiveIdx > rawIdx
+          ? basePolyline[effectiveIdx]
+          : split.covered[split.covered.length - 1] ?? basePolyline[effectiveIdx];
       maxSplitIdxRef.current = effectiveIdx;
       return {
-        completedPolyline: [...basePolyline.slice(0, effectiveIdx + 1), proj],
-        remainingPolyline: [proj, ...basePolyline.slice(effectiveIdx + 1)],
+        coveredPolyline: [...basePolyline.slice(0, effectiveIdx + 1), projectedPoint],
+        remainingPolyline: [projectedPoint, ...basePolyline.slice(effectiveIdx + 1)],
       };
     }
 
@@ -251,9 +206,19 @@ export function useRoutePolyline(
     if (hasRoadPolyline && lastCompletedIdx >= 0) {
       const lastStopCoord = coordFromStopRow(sortedStops[lastCompletedIdx]);
       if (lastStopCoord && isValidCoord(lastStopCoord)) {
-        const { idx, proj } = nearestSegmentSplit(basePolyline, lastStopCoord);
+        let idx = 0;
+        let proj = basePolyline[0];
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < basePolyline.length - 1; i += 1) {
+          const nearest = nearestPointOnSegment(basePolyline[i], basePolyline[i + 1], lastStopCoord);
+          if (nearest.distanceMeters < bestDistance) {
+            bestDistance = nearest.distanceMeters;
+            idx = i;
+            proj = nearest.point;
+          }
+        }
         return {
-          completedPolyline: [...basePolyline.slice(0, idx + 1), proj],
+          coveredPolyline: [...basePolyline.slice(0, idx + 1), proj],
           remainingPolyline: [proj, ...basePolyline.slice(idx + 1)],
         };
       }
@@ -262,7 +227,7 @@ export function useRoutePolyline(
     // Fallback — straight-line polyline or no completed stops: split by index.
     const splitAt = lastCompletedIdx + 1;
     return {
-      completedPolyline: basePolyline.slice(0, splitAt),
+      coveredPolyline: basePolyline.slice(0, splitAt),
       remainingPolyline: basePolyline.slice(splitAt),
     };
     // busCoord is intentionally in the deps: split must move as the bus moves.
@@ -292,5 +257,5 @@ export function useRoutePolyline(
     return { busToNextLeg: [busCoord, nextCoord], deviationFromRoute: deviation };
   }, [busCoord, nextStopId, segment?.routeStops, fullPolyline, roadPolyline]);
 
-  return { fullPolyline, completedPolyline, remainingPolyline, busToNextLeg, deviationFromRoute };
+  return { fullPolyline, coveredPolyline, remainingPolyline, busToNextLeg, deviationFromRoute };
 }

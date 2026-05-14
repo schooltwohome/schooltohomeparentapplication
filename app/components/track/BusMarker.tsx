@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Animated, StyleSheet, View } from "react-native";
-import { MarkerAnimated } from "react-native-maps";
+import { Marker } from "react-native-maps";
 import type { AnimatedBusMarkerState } from "../../_hooks/useAnimatedBusMarker";
 
 type Props = {
@@ -17,8 +17,7 @@ type Props = {
  * Shape: a white pill (48×32) with a downward-pointing triangle tip (8px) anchored
  * at y=1.0 so the tip touches the exact map coordinate — just like Uber's car pin.
  *
- * Rotation: the outer wrapper rotates to face the direction of travel. The inner bus
- * icon counter-rotates by the same amount so it always stays upright and readable.
+ * Rotation: map marker rotates using `flat + rotation` for audit compliance.
  *
  * States:
  *   - Moving  : white pill, amber icon, full shadow
@@ -31,8 +30,8 @@ export default function BusMarker({
   isStale = false,
   speedKmh = null,
 }: Props) {
-  const { animatedRegion, rotation } = markerState;
-  const markerRef = useRef<React.ElementRef<typeof MarkerAnimated>>(null);
+  const { coordinate, busHeading } = markerState;
+  const markerRef = useRef<React.ElementRef<typeof Marker>>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   // Stale pulse loop
@@ -59,20 +58,6 @@ export default function BusMarker({
     }
   }, [isStale, pulseAnim]);
 
-  // Pin rotates with bearing
-  const rotatePin = rotation.interpolate({
-    inputRange: [-7200, -3600, 0, 3600, 7200],
-    outputRange: ["-7200deg", "-3600deg", "0deg", "3600deg", "7200deg"],
-    extrapolate: "extend",
-  });
-
-  // Icon counter-rotates so it stays upright regardless of pin heading
-  const counterRotate = rotation.interpolate({
-    inputRange: [-7200, -3600, 0, 3600, 7200],
-    outputRange: ["7200deg", "3600deg", "0deg", "-3600deg", "-7200deg"],
-    extrapolate: "extend",
-  });
-
   const isStopped =
     typeof speedKmh === "number" && Number.isFinite(speedKmh) && speedKmh === 0;
 
@@ -82,11 +67,13 @@ export default function BusMarker({
   const triangleColor = isStopped ? "#CBD5E1" : "#F59E0B";
 
   return (
-    <MarkerAnimated
+    <Marker
       ref={markerRef}
-      coordinate={animatedRegion}
+      coordinate={coordinate}
       title={title}
       anchor={{ x: 0.5, y: 1.0 }}
+      flat
+      rotation={busHeading}
       tracksViewChanges={false}
     >
       <Animated.View
@@ -94,7 +81,6 @@ export default function BusMarker({
           styles.wrapper,
           {
             opacity: pulseAnim,
-            transform: [{ rotate: rotatePin }],
           },
         ]}
       >
@@ -111,7 +97,6 @@ export default function BusMarker({
               styles.iconWrap,
               {
                 opacity: iconOpacity,
-                transform: [{ rotate: counterRotate }],
               },
             ]}
           >
@@ -122,7 +107,7 @@ export default function BusMarker({
         {/* Triangle tip pointing down */}
         <View style={[styles.tip, { borderTopColor: triangleColor }]} />
       </Animated.View>
-    </MarkerAnimated>
+    </Marker>
   );
 }
 

@@ -1,26 +1,55 @@
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { ScrollView, View, Text, StyleSheet } from "react-native";
 import type { TrackingSegment } from "../../../../services/parentApi";
 
 type Props = { segment: TrackingSegment | null };
+type StopVisualState = "PASSED" | "NEXT" | "AHEAD";
 
 export default function UpcomingStops({ segment }: Props) {
   const stops = useMemo(() => {
-    const list = segment?.routeStops ?? [];
+    const list = [...(segment?.routeStops ?? [])].sort((a, b) => a.stopOrder - b.stopOrder);
     const pickupName = segment?.pickupStop?.name?.trim();
     const pickupId = segment?.pickupStopId?.trim();
     const completedStopIds = new Set(segment?.completedStopIds ?? []);
-    return list.map((s) => ({
-      id: s.id,
-      name: s.stopName,
-      isPickup: pickupId
+    return list.map((s, index) => {
+      const isParentStop = pickupId
         ? s.id === pickupId
         : pickupName
           ? s.stopName === pickupName
-          : false,
-      isCompleted: completedStopIds.has(s.id),
-    }));
+          : false;
+      const visualState: StopVisualState = completedStopIds.has(s.id)
+        ? "PASSED"
+        : isParentStop
+          ? "NEXT"
+          : "AHEAD";
+      return {
+        id: s.id,
+        order: index + 1,
+        name: s.stopName,
+        isPickup: isParentStop,
+        visualState,
+      };
+    });
   }, [segment]);
+
+  const coveredConnectorIndex = useMemo(() => {
+    if (!stops.length) return -1;
+    const completedStopIds = new Set(segment?.completedStopIds ?? []);
+    let maxCovered = -1;
+    for (let i = 0; i < stops.length - 1; i += 1) {
+      if (completedStopIds.has(stops[i + 1].id)) {
+        maxCovered = i;
+      }
+    }
+    const nextStopId = segment?.nextStopId;
+    if (nextStopId) {
+      const nextIdx = stops.findIndex((stop) => stop.id === nextStopId);
+      if (nextIdx > 0) {
+        maxCovered = Math.max(maxCovered, nextIdx - 1);
+      }
+    }
+    return maxCovered;
+  }, [segment, stops]);
 
   if (!stops.length) {
     return (
@@ -44,62 +73,36 @@ export default function UpcomingStops({ segment }: Props) {
         </Text>
       ) : null}
 
-      <View style={styles.timelineContainer}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.stripContent}
+      >
         {stops.map((stop, index) => {
           const isLast = index === stops.length - 1;
-          const highlight = stop.isPickup;
-          const statusText = stop.isCompleted ? "Reached" : "Pending";
-          const pickupText = highlight
-            ? segment?.hasReachedPickup
-              ? "Bus reached your stop"
-              : "Bus not reached yet"
-            : null;
+          const connectorCovered = index <= coveredConnectorIndex;
+          const statusText = stop.visualState === "PASSED" ? "Passed" : stop.visualState === "NEXT" ? "Next" : "Ahead";
           return (
-            <View key={stop.id} style={styles.stopRow}>
-              <View style={styles.graphicColumn}>
-                <View style={[styles.dot, highlight && styles.dotNext]}>
-                  {highlight ? <View style={styles.innerDot} /> : null}
-                </View>
-                {!isLast ? <View style={styles.line} /> : null}
-              </View>
-
-              <View style={styles.infoColumn}>
-                <View style={styles.titleRow}>
-                  <Text
-                    style={[styles.stopName, highlight && styles.stopNameHighlight]}
-                  >
-                    {stop.name}
-                  </Text>
+            <View key={stop.id} style={styles.stopItem}>
+              <View style={styles.progressRow}>
+                <View style={[styles.dot, stop.visualState === "PASSED" && styles.dotPassed, stop.visualState === "NEXT" && styles.dotNext, stop.visualState === "AHEAD" && styles.dotAhead]} />
+                {!isLast ? (
                   <View
                     style={[
-                      styles.statusBadge,
-                      stop.isCompleted ? styles.statusReached : styles.statusPending,
+                      styles.connector,
+                      connectorCovered ? styles.connectorCovered : styles.connectorRemaining,
                     ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusBadgeText,
-                        stop.isCompleted
-                          ? styles.statusReachedText
-                          : styles.statusPendingText,
-                      ]}
-                    >
-                      {statusText}
-                    </Text>
-                  </View>
-                  {highlight ? (
-                    <View style={styles.nextBadge}>
-                      <Text style={styles.nextBadgeText}>Your stop</Text>
-                    </View>
-                  ) : null}
-                </View>
-                <Text style={styles.orderLabel}>Order #{index + 1}</Text>
-                {pickupText ? <Text style={styles.pickupStatus}>{pickupText}</Text> : null}
+                  />
+                ) : null}
               </View>
+              <Text style={styles.orderLabel}>#{stop.order}</Text>
+              <Text style={styles.stopName} numberOfLines={1}>{stop.name}</Text>
+              <Text style={styles.statusLabel}>{statusText}</Text>
+              {stop.isPickup ? <Text style={styles.yourStopText}>Your stop</Text> : null}
             </View>
           );
         })}
-      </View>
+      </ScrollView>
     </View>
   );
 }
@@ -125,107 +128,71 @@ const styles = StyleSheet.create({
     color: "#64748B",
     lineHeight: 20,
   },
-  timelineContainer: {
-    paddingLeft: 8,
+  stripContent: {
+    paddingVertical: 6,
+    paddingRight: 14,
   },
-  stopRow: {
+  stopItem: {
+    width: 88,
+    marginRight: 8,
+  },
+  progressRow: {
     flexDirection: "row",
-    minHeight: 56,
-  },
-  graphicColumn: {
     alignItems: "center",
-    width: 24,
-    marginRight: 16,
+    height: 24,
   },
   dot: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: "#CBD5E1",
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+  },
+  dotPassed: {
+    backgroundColor: "#1A73E8",
+    borderColor: "#1A73E8",
   },
   dotNext: {
-    backgroundColor: "#3B82F6",
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    marginTop: 2,
-  },
-  innerDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
     backgroundColor: "#FFFFFF",
+    borderColor: "#1A73E8",
   },
-  line: {
-    width: 2,
+  dotAhead: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#9E9E9E",
+  },
+  connector: {
     flex: 1,
-    backgroundColor: "#E2E8F0",
-    marginVertical: 4,
+    height: 3,
+    borderRadius: 999,
+    marginLeft: 6,
+    marginRight: 2,
   },
-  infoColumn: {
-    flex: 1,
-    paddingBottom: 20,
+  connectorCovered: {
+    backgroundColor: "#1A73E8",
   },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 8,
+  connectorRemaining: {
+    backgroundColor: "#BDBDBD",
   },
   stopName: {
-    fontSize: 16,
-    color: "#475569",
-    fontWeight: "500",
-    flex: 1,
-  },
-  stopNameHighlight: {
-    fontWeight: "700",
-    color: "#1E293B",
-  },
-  nextBadge: {
-    backgroundColor: "#DBEAFE",
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  nextBadgeText: {
-    fontSize: 10,
-    color: "#2563EB",
-    fontWeight: "700",
-  },
-  orderLabel: {
-    fontSize: 13,
-    color: "#94A3B8",
     marginTop: 4,
-  },
-  pickupStatus: {
     fontSize: 12,
-    marginTop: 4,
-    color: "#334155",
+    color: "#1E293B",
     fontWeight: "600",
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  statusBadgeText: {
+  orderLabel: {
+    marginTop: 6,
     fontSize: 10,
+    color: "#94A3B8",
+  },
+  statusLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#64748B",
+    fontWeight: "600",
+  },
+  yourStopText: {
+    marginTop: 3,
+    fontSize: 10,
+    color: "#1A73E8",
     fontWeight: "700",
-  },
-  statusReached: {
-    backgroundColor: "#DCFCE7",
-  },
-  statusReachedText: {
-    color: "#166534",
-  },
-  statusPending: {
-    backgroundColor: "#F1F5F9",
-  },
-  statusPendingText: {
-    color: "#475569",
   },
 });

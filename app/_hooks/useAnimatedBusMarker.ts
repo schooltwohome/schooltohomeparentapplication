@@ -1,6 +1,4 @@
-import { useEffect, useRef } from "react";
-import { Animated } from "react-native";
-import { AnimatedRegion } from "react-native-maps";
+import { useEffect, useRef, useState } from "react";
 import { bearingDeg } from "../../lib/geo";
 import type { GeoPoint } from "../../types/tracking";
 
@@ -16,6 +14,9 @@ const MIN_BEARING_UPDATE_DISTANCE_M = 12;
 const INTERPOLATION_WINDOW_MS = 4_000;
 /** Tick rate for the interpolation loop. 100 ms gives ~10 fps of smooth movement. */
 const INTERPOLATION_TICK_MS = 100;
+const HEADING_JITTER_DEG = 2;
+const MOVING_HEADING_SMOOTHING = 0.45;
+const STATIONARY_HEADING_SMOOTHING = 0.25;
 
 function toRad(deg: number): number {
   return (deg * Math.PI) / 180;
@@ -59,15 +60,10 @@ function interpolate(start: GeoPoint, end: GeoPoint, fraction: number): { latitu
 }
 
 export type AnimatedBusMarkerState = {
-  /** Pass directly to `<MarkerAnimated coordinate={animatedRegion}>`. */
-  animatedRegion: InstanceType<typeof AnimatedRegion>;
-  /**
-   * Current bearing as an `Animated.Value` (degrees 0–360).
-   * Apply via `transform: [{ rotate: rotation.interpolate({...}) }]` on the icon View.
-   */
-  rotation: Animated.Value;
-  /** Current bearing as a plain number for non-animated consumers (e.g. icon label). */
-  bearingDegRef: React.MutableRefObject<number>;
+  /** Smoothly interpolated marker coordinate to pass into `<Marker coordinate={...}>`. */
+  coordinate: { latitude: number; longitude: number };
+  /** Stable heading in degrees for Marker `rotation` prop. */
+  busHeading: number;
 };
 
 /**
@@ -77,28 +73,26 @@ export type AnimatedBusMarkerState = {
  * 1. On each GPS fix, we record the previous position as `interpolationStart` and the
  *    new position as `interpolationTarget`, along with the current timestamp.
  * 2. A `setInterval` running every INTERPOLATION_TICK_MS (100 ms) computes what fraction
- *    of INTERPOLATION_WINDOW_MS has elapsed and calls `animatedRegion.setValue()` with the
- *    linearly interpolated coordinate. This makes the bus appear to move continuously even
- *    between 4-second GPS polls — the same technique used by Uber and Swiggy.
- * 3. Rotation (bearing) is still driven by `Animated.timing` so the icon spins smoothly
- *    to face the direction of travel as each new fix arrives.
+ *    of INTERPOLATION_WINDOW_MS has elapsed and updates a local coordinate state.
+ *    This makes the bus appear to move continuously even between 4-second GPS polls.
+ * 3. Heading is derived from travel bearing and smoothed to suppress GPS jitter.
  *
  * @param location  Current bus location from the tracking API; pass `null` when no active trip.
  */
 export function useAnimatedBusMarker(location: GeoPoint | null): AnimatedBusMarkerState {
-  const animatedRegion = useRef(
-    new AnimatedRegion({
-      latitude: location?.latitude ?? 0,
-      longitude: location?.longitude ?? 0,
-      latitudeDelta: 0,
-      longitudeDelta: 0,
-    })
-  ).current;
-
-  const rotation = useRef(new Animated.Value(0)).current;
-  const bearingDegRef = useRef<number>(0);
+  const [coordinate, setCoordinate] = useState<{ latitude: number; longitude: number }>({
+    latitude: location?.latitude ?? 0,
+    longitude: location?.longitude ?? 0,
+  });
+  const [busHeading, setBusHeading] = useState<number>(
+    Number.isFinite(location?.heading) ? Number(location?.heading) : 0
+  );
+  const bearingDegRef = useRef<number>(Number.isFinite(location?.heading) ? Number(location?.heading) : 0);
+  const currentCoordRef = useRef<{ latitude: number; longitude: number }>({
+    latitude: location?.latitude ?? 0,
+    longitude: location?.longitude ?? 0,
+  });
   const prevLocationRef = useRef<GeoPoint | null>(null);
-  const headingAccumulatorRef = useRef<number>(0);
   const isInitializedRef = useRef(false);
 
   // Interpolation state — updated on every GPS fix, consumed by the tick interval.
@@ -119,13 +113,8 @@ export function useAnimatedBusMarker(location: GeoPoint | null): AnimatedBusMark
       const elapsed = Date.now() - interpolationStartTimeRef.current;
       const fraction = Math.min(1, elapsed / interpolationWindowRef.current);
       const pos = interpolate(start, target, fraction);
-
-      animatedRegion.setValue({
-        latitude: pos.latitude,
-        longitude: pos.longitude,
-        latitudeDelta: 0,
-        longitudeDelta: 0,
-      });
+      currentCoordRef.current = { latitude: pos.latitude, longitude: pos.longitude };
+      setCoordinate({ latitude: pos.latitude, longitude: pos.longitude });
     }, INTERPOLATION_TICK_MS);
 
     return () => {
@@ -134,8 +123,6 @@ export function useAnimatedBusMarker(location: GeoPoint | null): AnimatedBusMark
         tickIntervalRef.current = null;
       }
     };
-  // animatedRegion is a stable ref value — safe to omit from deps.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -143,55 +130,58 @@ export function useAnimatedBusMarker(location: GeoPoint | null): AnimatedBusMark
 
     if (!isInitializedRef.current) {
       // Snap to position on first render — no interpolation to avoid "flying in from 0,0".
-      animatedRegion.setValue({
+      setCoordinate({
         latitude: location.latitude,
         longitude: location.longitude,
-        latitudeDelta: 0,
-        longitudeDelta: 0,
       });
+      currentCoordRef.current = {
+        latitude: location.latitude,
+        longitude: location.longitude,
+      };
       interpolationStartRef.current = location;
       interpolationTargetRef.current = location;
       interpolationStartTimeRef.current = Date.now();
       isInitializedRef.current = true;
       prevLocationRef.current = location;
+      if (Number.isFinite(location.heading)) {
+        const heading = Number(location.heading);
+        bearingDegRef.current = heading;
+        setBusHeading(heading);
+      }
       return;
     }
 
     const prev = prevLocationRef.current;
     const segmentDistance = prev ? haversineMeters(prev, location) : MIN_DISTANCE_FOR_ANIMATION_M;
 
-    // Update bearing / rotation animation.
+    // Update heading using route bearing first, then device heading fallback for tiny movement.
     if (prev) {
-      let newBearing: number;
+      let targetHeading: number;
       if (segmentDistance >= MIN_BEARING_UPDATE_DISTANCE_M) {
-        newBearing = bearingDeg(prev, location);
+        targetHeading = bearingDeg(prev, location);
       } else if (location.heading != null) {
-        newBearing = location.heading;
+        targetHeading = location.heading;
       } else {
-        newBearing = bearingDegRef.current;
+        targetHeading = bearingDegRef.current;
       }
-      const delta = unwrapHeadingDelta(newBearing, bearingDegRef.current);
-      if (Math.abs(delta) >= 2) {
-        bearingDegRef.current = newBearing;
-        headingAccumulatorRef.current += delta;
-        // Animate rotation over the same window as the interpolation so the icon
-        // direction and position arrive together.
-        Animated.timing(rotation, {
-          toValue: headingAccumulatorRef.current,
-          duration: animationDurationFromDistance(segmentDistance),
-          useNativeDriver: false,
-        }).start();
+
+      const delta = unwrapHeadingDelta(targetHeading, bearingDegRef.current);
+      if (Math.abs(delta) >= HEADING_JITTER_DEG) {
+        const smoothing =
+          segmentDistance >= MIN_BEARING_UPDATE_DISTANCE_M
+            ? MOVING_HEADING_SMOOTHING
+            : STATIONARY_HEADING_SMOOTHING;
+        const nextHeading = (bearingDegRef.current + delta * smoothing + 360) % 360;
+        bearingDegRef.current = nextHeading;
+        setBusHeading(nextHeading);
       }
     }
 
     // Arm the interpolation: the tick loop will carry the marker from the current
     // rendered position to `location` over INTERPOLATION_WINDOW_MS milliseconds.
-    // Using the current AnimatedRegion value as the start avoids a visible jump when
-    // a new fix arrives before the previous interpolation segment has fully completed.
-    const currentLat = (animatedRegion as unknown as { _value: { latitude: number } })._value?.latitude
-      ?? (prev?.latitude ?? location.latitude);
-    const currentLon = (animatedRegion as unknown as { _value: { longitude: number } })._value?.longitude
-      ?? (prev?.longitude ?? location.longitude);
+    // Using the current interpolated coordinate as the next segment start avoids visible jumps.
+    const currentLat = currentCoordRef.current.latitude ?? (prev?.latitude ?? location.latitude);
+    const currentLon = currentCoordRef.current.longitude ?? (prev?.longitude ?? location.longitude);
 
     interpolationStartRef.current = { latitude: currentLat, longitude: currentLon };
     interpolationTargetRef.current = location;
@@ -199,7 +189,7 @@ export function useAnimatedBusMarker(location: GeoPoint | null): AnimatedBusMark
     interpolationWindowRef.current = animationDurationFromDistance(segmentDistance);
 
     prevLocationRef.current = location;
-  }, [location, animatedRegion, rotation]);
+  }, [location]);
 
-  return { animatedRegion, rotation, bearingDegRef };
+  return { coordinate, busHeading };
 }

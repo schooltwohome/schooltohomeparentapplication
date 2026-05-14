@@ -9,6 +9,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
+    "verify:native-config": "node ./scripts/verify-native-config.js",
     "build:android": "eas build --platform android --profile production",
     "submit:android": "eas submit --platform android --profile production --latest",
     "preview:android": "eas build --platform android --profile preview"

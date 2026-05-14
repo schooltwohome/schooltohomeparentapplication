@@ -3,8 +3,8 @@
  * follow mode camera, and the FloatingInfoCard overlay.
  *
  * Polylines:
- * 1) completedPolyline — muted grey; stops already visited.
- * 2) remainingPolyline — primary blue; stops ahead.
+ * 1) coveredPolyline   — blue; route already covered.
+ * 2) remainingPolyline — grey; route still ahead.
  * 3) busToNextLeg     — dashed amber; live bus → next stop.
  */
 import React, {
@@ -16,13 +16,12 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
-  Animated,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import MapView, { Marker, MarkerAnimated, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import type { TrackingSegment } from "../../../services/parentApi";
@@ -95,17 +94,17 @@ type Props = {
   gpsUnavailable?: boolean;
 };
 
-type StopStyle = "reached" | "next" | "pickup" | "upcoming";
+type StopStyle = "PASSED" | "NEXT" | "AHEAD";
 
 function resolveStopStyle(stopId: string, segment: TrackingSegment): StopStyle {
   const completed = new Set(segment.completedStopIds ?? []);
-  if (completed.has(stopId)) return "reached";
-  if (stopId === segment.nextStopId) {
-    if (segment.pickupStopId && stopId === segment.pickupStopId) return "pickup";
-    return "next";
-  }
-  if (segment.pickupStopId && stopId === segment.pickupStopId) return "pickup";
-  return "upcoming";
+  if (completed.has(stopId)) return "PASSED";
+  const pickupName = segment.pickupStop?.name?.trim();
+  const isParentStop =
+    (segment.pickupStopId && stopId === segment.pickupStopId) ||
+    (!segment.pickupStopId && pickupName && segment.routeStops?.find((s) => s.id === stopId)?.stopName === pickupName);
+  if (isParentStop) return "NEXT";
+  return "AHEAD";
 }
 
 /** Maps the raw trip-status string to a short, human-readable label for the marker callout. */
@@ -227,11 +226,11 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
   // True while we have stops to draw a route for but the road fetch hasn't resolved yet.
   const isRoadPolylineLoading = stopMapCoords.length >= 2 && !hasRoadPolyline && !!googleMapsApiKey;
 
-  // Animated bus marker state (AnimatedRegion + rotation).
+  // Smooth bus marker coordinate + stable heading.
   const markerState = useAnimatedBusMarker(busCoord);
 
   // Polyline splits (completed / remaining / bus-to-next) + deviation distance.
-  const { completedPolyline, remainingPolyline, busToNextLeg, deviationFromRoute } =
+  const { coveredPolyline, remainingPolyline, busToNextLeg, deviationFromRoute } =
     useRoutePolyline(segment, busCoord, roadPolyline);
 
   const isOffRoute = useMemo(() => {
@@ -305,13 +304,13 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
       {
         center: busCoord,
         pitch: 50,
-        heading: markerState.bearingDegRef.current,
+        heading: markerState.busHeading,
         zoom: speedZoom(segment?.speedKmh),
         altitude: undefined,
       },
       { duration: 600 }
     );
-  }, [followMode, busCoord, markerState.bearingDegRef, segment?.speedKmh]);
+  }, [followMode, busCoord, markerState.busHeading, segment?.speedKmh]);
 
   const handleRegionChangeComplete = useCallback(() => {
     if (isProgrammaticMoveRef.current) {
@@ -352,14 +351,14 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
         {
           center: busCoord,
           pitch: 50,
-          heading: markerState.bearingDegRef.current,
+          heading: markerState.busHeading,
           zoom: speedZoom(segment?.speedKmh),
           altitude: undefined,
         },
         { duration: 600 }
       );
     }
-  }, [busCoord, markerState.bearingDegRef, segment?.speedKmh]);
+  }, [busCoord, markerState.busHeading, segment?.speedKmh]);
 
   // Clear the auto-resume timer when the component unmounts to avoid state updates on an
   // unmounted component and prevent potential memory leaks.
@@ -411,47 +410,42 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
       >
         {/* ── Completed route segment (always split by progress) ── */}
         {/* Casing (border underneath for road-like contrast) */}
-        {completedPolyline.length >= 2 ? (
+        {coveredPolyline.length >= 2 ? (
           <Polyline
-            coordinates={completedPolyline}
-            strokeColor="#CBD5E1"
+            coordinates={coveredPolyline}
+            strokeColor="#DDE6F8"
+            strokeWidth={7}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null}
+        {coveredPolyline.length >= 2 ? (
+          <Polyline
+            coordinates={coveredPolyline}
+            strokeColor="#1A73E8"
+            strokeWidth={5}
+            lineCap="round"
+            lineJoin="round"
+          />
+        ) : null}
+
+        {/* ── Remaining route segment (always split by progress) ── */}
+        {remainingPolyline.length >= 2 ? (
+          <Polyline
+            coordinates={remainingPolyline}
+            strokeColor="#ECECEC"
             strokeWidth={6}
             lineCap="round"
             lineJoin="round"
           />
         ) : null}
-        {/* Main completed line — muted to show already-traveled road */}
-        {completedPolyline.length >= 2 ? (
-          <Polyline
-            coordinates={completedPolyline}
-            strokeColor="#94A3B8"
-            strokeWidth={4}
-            lineCap="round"
-            lineJoin="round"
-            lineDashPattern={hasRoadPolyline ? undefined : [8, 6]}
-          />
-        ) : null}
-
-        {/* ── Remaining route segment (always split by progress) ── */}
-        {/* Casing — dark border makes the blue pop on any map style */}
         {remainingPolyline.length >= 2 ? (
           <Polyline
             coordinates={remainingPolyline}
-            strokeColor={hasRoadPolyline ? "#1E40AF" : "#1E3A5F"}
-            strokeWidth={8}
+            strokeColor="#BDBDBD"
+            strokeWidth={3}
             lineCap="round"
             lineJoin="round"
-          />
-        ) : null}
-        {/* Main remaining line — bright Uber-style blue */}
-        {remainingPolyline.length >= 2 ? (
-          <Polyline
-            coordinates={remainingPolyline}
-            strokeColor={hasRoadPolyline ? "#3B82F6" : "#93C5FD"}
-            strokeWidth={5}
-            lineCap="round"
-            lineJoin="round"
-            lineDashPattern={hasRoadPolyline ? undefined : [12, 6]}
           />
         ) : null}
 
@@ -477,8 +471,8 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
             anchor={{ x: 0.5, y: 0 }}
           >
             <View style={styles.stopLabelWrap}>
-              <StopMarkerDot style="pickup" />
-              <StopLabel text={segment.pickupStop?.name ?? "Your stop"} stopStyle="pickup" />
+              <StopMarkerDot style="NEXT" />
+              <StopLabel text={segment.pickupStop?.name ?? "Your stop"} stopStyle="NEXT" />
             </View>
           </Marker>
         ) : null}
@@ -492,9 +486,9 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
                 typeof s.longitude === "number" ? s.longitude : Number(s.longitude ?? NaN);
               const style = resolveStopStyle(s.id, segment);
               const displayName =
-                style === "pickup" && segment.pickupStop?.name
+                style === "NEXT" && segment.pickupStop?.name
                   ? `${s.stopName} · Your stop`
-                  : style === "reached"
+                  : style === "PASSED"
                   ? `✓ ${s.stopName}`
                   : s.stopName;
               return (
@@ -515,29 +509,17 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
 
         {/* Live bus marker: AnimatedRegion keeps updates smooth and avoids stale marker frames. */}
         {busCoord ? (
-          <MarkerAnimated
-            coordinate={markerState.animatedRegion}
+          <Marker
+            coordinate={markerState.coordinate}
             tracksViewChanges
             anchor={{ x: 0.5, y: 0.5 }}
+            flat
+            rotation={markerState.busHeading}
             zIndex={1200}
             title={segment?.busNumber ? `Bus ${segment.busNumber}` : "School bus"}
             description={busStatusLabel(segment?.tripStatus)}
           >
-            <Animated.View
-              style={[
-                styles.busMarkerWrap,
-                {
-                  transform: [
-                    {
-                      rotate: markerState.rotation.interpolate({
-                        inputRange: [-360, 360],
-                        outputRange: ["-360deg", "360deg"],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
+            <View style={styles.busMarkerWrap}>
               <View
                 style={[
                   styles.busMarkerPin,
@@ -553,8 +535,8 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
                   </Text>
                 </View>
               ) : null}
-            </Animated.View>
-          </MarkerAnimated>
+            </View>
+          </Marker>
         ) : null}
 
         {/* Parent / user location marker */}
@@ -651,26 +633,21 @@ export default function LiveMap({ segment, userLocation, isLocationStale, gpsUna
 }
 
 function StopMarkerDot({ style }: { style: StopStyle }) {
-  const colors = {
-    reached: { bg: "#22C55E", ring: "#DCFCE7" },
-    next: { bg: "#2563EB", ring: "#DBEAFE" },
-    pickup: { bg: "#7C3AED", ring: "#EDE9FE" },
-    upcoming: { bg: "#94A3B8", ring: "#F1F5F9" },
-  };
-  const c = colors[style];
+  if (style === "PASSED") {
+    return <View style={[styles.stopRing, { borderColor: "#1A73E8", backgroundColor: "#1A73E8" }]} />;
+  }
+
+  const borderColor = style === "NEXT" ? "#1A73E8" : "#9E9E9E";
   return (
-    <View style={[styles.stopRing, { borderColor: c.ring, backgroundColor: c.ring }]}>
-      <View style={[styles.stopDot, { backgroundColor: c.bg }]} />
-    </View>
+    <View style={[styles.stopRing, { borderColor, backgroundColor: "#FFFFFF" }]} />
   );
 }
 
 function StopLabel({ text, stopStyle }: { text: string; stopStyle: StopStyle }) {
   const stripeColors: Record<StopStyle, string> = {
-    reached: "#22C55E",
-    next: "#2563EB",
-    pickup: "#7C3AED",
-    upcoming: "#94A3B8",
+    PASSED: "#1A73E8",
+    NEXT: "#1A73E8",
+    AHEAD: "#9E9E9E",
   };
   return (
     <View style={styles.stopLabelPill}>
@@ -782,11 +759,6 @@ const styles = StyleSheet.create({
     borderWidth: 2.5,
     alignItems: "center",
     justifyContent: "center",
-  },
-  stopDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
   },
   stopLabelWrap: {
     alignItems: "center",
