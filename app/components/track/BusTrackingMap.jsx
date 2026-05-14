@@ -137,7 +137,10 @@ function decodePolyline(encoded) {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function BusTrackingMap() {
+export default function BusTrackingMap({
+  busLocation = null,
+  useDeviceAsBusFallback = false,
+} = {}) {
   const mapRef = useRef(null);
 
   // Follow-mode: camera centres on bus until user manually pans.
@@ -186,11 +189,17 @@ export default function BusTrackingMap() {
   // Next stop = first waypoint whose index is not yet passed.
   const nextStopIndex = WAYPOINTS.findIndex((_, i) => !passedStops.includes(i));
 
-  // ── Part 2 — GPS watcher (set up once; GPS fires every 2 m or 1 s) ─────────
+  const hasExternalBusLocation =
+    busLocation &&
+    Number.isFinite(busLocation.latitude) &&
+    Number.isFinite(busLocation.longitude);
+
+  // ── Part 2 — GPS watcher (optional fallback; GPS fires every 2 m or 1 s) ───
   // FIX b1: cancelled flag prevents a memory leak when the component unmounts
   //         before watchPositionAsync resolves (the async continuation would
   //         otherwise assign a watcher that the cleanup already ran past).
   useEffect(() => {
+    if (!useDeviceAsBusFallback || hasExternalBusLocation) return;
     let cancelled = false;
     let watcher = null;
 
@@ -216,7 +225,28 @@ export default function BusTrackingMap() {
       cancelled = true;
       watcher?.remove();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [hasExternalBusLocation, useDeviceAsBusFallback]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Consume server/driver GPS updates when passed from parent tracking flow.
+  useEffect(() => {
+    if (!hasExternalBusLocation) return;
+    handleLocationUpdate({
+      latitude: busLocation.latitude,
+      longitude: busLocation.longitude,
+      speed:
+        Number.isFinite(busLocation.speedKmh) && busLocation.speedKmh >= 0
+          ? busLocation.speedKmh / 3.6
+          : 0,
+      heading:
+        Number.isFinite(busLocation.heading) ? busLocation.heading : null,
+    });
+  }, [
+    hasExternalBusLocation,
+    busLocation?.latitude,
+    busLocation?.longitude,
+    busLocation?.speedKmh,
+    busLocation?.heading,
+  ]);
 
   // ── Part 5 — Fetch road-snapped route once on mount ─────────────────────────
   // FIX b2: AbortController cancels the in-flight fetch on unmount to prevent
@@ -414,6 +444,11 @@ export default function BusTrackingMap() {
 
   return (
     <View style={styles.container}>
+      {!hasExternalBusLocation && !useDeviceAsBusFallback ? (
+        <View style={styles.waitingBanner}>
+          <Text style={styles.waitingBannerText}>Waiting for live bus GPS...</Text>
+        </View>
+      ) : null}
       {/* ── MapView ── */}
       <MapView
         ref={mapRef}
@@ -568,6 +603,25 @@ export default function BusTrackingMap() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  waitingBanner: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    zIndex: 20,
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    alignItems: 'center',
+  },
+  waitingBannerText: {
+    color: '#92400E',
+    fontSize: 12,
+    fontWeight: '700',
   },
   map: {
     width: '100%',

@@ -16,6 +16,12 @@ export function targetFromPushData(
     case "driver_assigned":
     case "trip_start_reminder":
     case "bus_approaching":
+    case "trip_started":
+    case "bus_on_the_way":
+    case "bus_arriving_soon":
+    case "bus_arrived":
+    case "bus_left_stop":
+    case "route_completed":
     case "student_boarded":
     case "stop_completed":
       return { tab: "track", tripId, busId, routeId };

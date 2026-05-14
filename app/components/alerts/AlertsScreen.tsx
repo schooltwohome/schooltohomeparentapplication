@@ -30,8 +30,30 @@ export default function AlertsScreen() {
     useState<NotificationCategoryFilter>("all");
 
   const filteredNotifications = useMemo(() => {
-    if (categoryFilter === "all") return notifications;
-    return notifications.filter((n) => {
+    const today = new Date();
+    const sameDayRows = notifications.filter((n) => {
+      const created = new Date(n.createdAt);
+      return (
+        created.getFullYear() === today.getFullYear() &&
+        created.getMonth() === today.getMonth() &&
+        created.getDate() === today.getDate()
+      );
+    });
+
+    // Focus this screen on live bus-alert history for the current day.
+    const busAlertRows = sameDayRows.filter((n) =>
+      [
+        "trip_started",
+        "bus_on_the_way",
+        "bus_arriving_soon",
+        "bus_arrived",
+        "bus_left_stop",
+        "route_completed",
+      ].includes((n.eventType ?? "").toLowerCase())
+    );
+
+    if (categoryFilter === "all") return busAlertRows;
+    return busAlertRows.filter((n) => {
       const cat = notificationCategory(n.eventType, n.title, n.message);
       if (cat === "other") return false;
       return cat === categoryFilter;
@@ -112,8 +134,7 @@ export default function AlertsScreen() {
         >
           {notifications.length === 0 ? (
             <Text style={styles.empty}>
-              No notifications yet. When your school sends updates, they will
-              appear here and as push alerts (if enabled).
+              No bus alerts for today yet. Route start, arriving, arrived, left-stop, and completion alerts will appear here.
             </Text>
           ) : filteredNotifications.length === 0 ? (
             <Text style={styles.empty}>

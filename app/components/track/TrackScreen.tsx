@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { Alert, View, StyleSheet, Text, ActivityIndicator } from "react-native";
+import { Alert, AppState, View, StyleSheet, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import * as Location from "expo-location";
-import { useFocusEffect } from "expo-router";
+import { Bell } from "lucide-react-native";
 import LiveMap from "./LiveMap";
 import BusStatusPanel from "./status/BusStatusPanel";
 import PermissionPrompt from "./PermissionPrompt";
-import { useAppSelector } from "../../../store/hooks";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
 import {
   getParentTracking,
   type TrackingSegment,
@@ -16,6 +16,7 @@ import {
   type BusArrivingPush,
 } from "../../_hooks/useParentTrackingRealtime";
 import { normalizeTripStatus } from "../../../types/tracking";
+import { setPendingPushNavigation } from "../../../store/slices/notificationsSlice";
 
 /** UI poll interval. GPS freshness (`locationAgeSeconds`) depends on driver uploads + backend persistence, not this interval. */
 const POLL_MS = 15000;
@@ -25,7 +26,9 @@ function isFiniteNumber(value: unknown): value is number {
 }
 
 export default function TrackScreen() {
+  const dispatch = useAppDispatch();
   const token = useAppSelector((s) => s.auth.token);
+  const unreadCount = useAppSelector((s) => s.notifications.items.filter((n) => !n.isRead).length);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{
@@ -37,18 +40,10 @@ export default function TrackScreen() {
   const activeTripIdRef = useRef<string | null>(null);
   const [trackLoading, setTrackLoading] = useState(true);
   const [trackError, setTrackError] = useState<string | null>(null);
-  const [screenFocused, setScreenFocused] = useState(true);
   const refreshSeqRef = useRef(0);
   const alertedTripIdRef = useRef<string | null>(null);
   // Deduplicate socket-based arriving alerts: key = tripId-stopId
   const alertedArrivingKeysRef = useRef<Set<string>>(new Set());
-
-  useFocusEffect(
-    useCallback(() => {
-      setScreenFocused(true);
-      return () => setScreenFocused(false);
-    }, [])
-  );
 
   const primarySegment = useMemo(() => {
     if (!segments.length) return null;
@@ -74,7 +69,15 @@ export default function TrackScreen() {
   const effectivePrimarySegment = useMemo<TrackingSegment | null>(() => {
     if (!primarySegment) return null;
     if (!liveOverride) return primarySegment;
-    if (liveOverride.busId !== primarySegment.busId) return primarySegment;
+    if (String(liveOverride.busId) !== String(primarySegment.busId ?? "")) return primarySegment;
+    if (
+      liveOverride.tripId &&
+      primarySegment.tripId &&
+      String(liveOverride.tripId) !== String(primarySegment.tripId)
+    ) {
+      // Guard against stale pushes from a previous trip on the same bus.
+      return primarySegment;
+    }
     const segTs = primarySegment.lastFixAt ? Date.parse(primarySegment.lastFixAt) : 0;
     if (liveOverride.ts <= segTs) return primarySegment;
     return {
@@ -89,22 +92,43 @@ export default function TrackScreen() {
   }, [primarySegment, liveOverride]);
 
   const freshnessUi = useMemo(() => {
-    if (!primarySegment) {
+    if (!effectivePrimarySegment) {
       return {
         isStale: false,
         staleLabel: null as string | null,
       };
     }
-    const age = primarySegment.locationAgeSeconds;
-    const isStale = primarySegment.isLocationStale === true;
-    if (!isStale) {
+    const ageFromFix = effectivePrimarySegment.lastFixAt
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(effectivePrimarySegment.lastFixAt)) / 1000))
+      : null;
+    const reportedAge = effectivePrimarySegment.locationAgeSeconds;
+    const age =
+      typeof ageFromFix === "number" && Number.isFinite(ageFromFix)
+        ? ageFromFix
+        : reportedAge;
+    const isStale =
+      (effectivePrimarySegment.isLocationStale === true && (age == null || age > 30)) ||
+      (typeof age === "number" && Number.isFinite(age) && age > 30);
+    if (!isStale || (typeof age === "number" && age <= 30)) {
       return { isStale: false, staleLabel: null as string | null };
     }
     if (typeof age === "number" && Number.isFinite(age)) {
-      return { isStale: true, staleLabel: `Location updating... Last updated ${age}s ago` };
+      const lastSeen =
+        effectivePrimarySegment.lastFixAt != null
+          ? new Date(effectivePrimarySegment.lastFixAt).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            })
+          : null;
+      return {
+        isStale: true,
+        staleLabel: lastSeen
+          ? `Location updating... Last seen at ${lastSeen} (${age}s ago)`
+          : `Location updating... Last updated ${age}s ago`,
+      };
     }
     return { isStale: true, staleLabel: "Location updating..." };
-  }, [primarySegment]);
+  }, [effectivePrimarySegment]);
 
   // True when the trip is active but we have never received GPS coordinates.
   // Different from "stale" (which means coordinates were received but are old).
@@ -120,22 +144,59 @@ export default function TrackScreen() {
   }, [effectivePrimarySegment]);
 
   const staleMinutesInfo = useMemo(() => {
-    const age = primarySegment?.locationAgeSeconds;
+    const age = effectivePrimarySegment?.lastFixAt
+      ? Math.max(0, Math.floor((Date.now() - Date.parse(effectivePrimarySegment.lastFixAt)) / 1000))
+      : effectivePrimarySegment?.locationAgeSeconds;
     const shouldShow =
       trackLoading === false &&
       trackError === null &&
-      primarySegment?.isLocationStale === true &&
+      effectivePrimarySegment != null &&
       typeof age === "number" &&
       Number.isFinite(age) &&
       age > 60;
     if (!shouldShow || typeof age !== "number") return null;
     return Math.round(age / 60);
   }, [
-    primarySegment?.isLocationStale,
-    primarySegment?.locationAgeSeconds,
+    effectivePrimarySegment,
+    effectivePrimarySegment?.lastFixAt,
+    effectivePrimarySegment?.locationAgeSeconds,
     trackError,
     trackLoading,
   ]);
+
+  const liveStatusMessage = useMemo(() => {
+    if (!effectivePrimarySegment) return null;
+
+    const pickupName = effectivePrimarySegment.pickupStop?.name ?? "your stop";
+    const hasArrived =
+      effectivePrimarySegment.hasReachedPickup === true ||
+      (typeof effectivePrimarySegment.distanceToPickupKm === "number" &&
+        effectivePrimarySegment.distanceToPickupKm <= 0.05);
+
+    if (hasArrived) {
+      return {
+        tone: "success" as const,
+        text: `Bus has arrived at ${pickupName}.`,
+      };
+    }
+
+    const speed = effectivePrimarySegment.speedKmh;
+    if (typeof speed === "number" && Number.isFinite(speed)) {
+      const roundedSpeed = Math.max(0, Math.round(speed));
+      if (roundedSpeed <= 1) {
+        return {
+          tone: "info" as const,
+          text: "Bus is currently stopped.",
+        };
+      }
+      return {
+        tone: "info" as const,
+        text: `Bus speed is ${roundedSpeed} km/h.`,
+      };
+    }
+
+    return null;
+  }, [effectivePrimarySegment]);
 
   const loadTracking = useCallback(async () => {
     if (!token) {
@@ -200,13 +261,19 @@ export default function TrackScreen() {
     );
   }, []);
 
+  const handleRealtimeUnauthorized = useCallback(() => {
+    setTrackError("Live tracking session expired. Please sign in again.");
+  }, []);
+
   useParentTrackingRealtime(
     token,
     liveBusIds,
     loadTracking,
-    Boolean(token && hasPermission === true && screenFocused),
+    // Keep realtime socket alive while app is open; avoids losing updates when navigating tabs/screens.
+    Boolean(token && hasPermission === true),
     setLiveOverride,
-    handleArrivingPush
+    handleArrivingPush,
+    handleRealtimeUnauthorized
   );
 
   useEffect(() => {
@@ -240,6 +307,17 @@ export default function TrackScreen() {
     loadTracking();
     const id = setInterval(loadTracking, POLL_MS);
     return () => clearInterval(id);
+  }, [token, hasPermission, loadTracking]);
+
+  useEffect(() => {
+    if (!token || hasPermission !== true) return;
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        // Recovery path: force a fresh snapshot after foreground resume.
+        void loadTracking();
+      }
+    });
+    return () => sub.remove();
   }, [token, hasPermission, loadTracking]);
 
   useEffect(() => {
@@ -296,6 +374,18 @@ export default function TrackScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.bellWrap}>
+        <TouchableOpacity
+          style={styles.bellButton}
+          onPress={() => dispatch(setPendingPushNavigation({ tab: "alerts" }))}
+          activeOpacity={0.85}
+        >
+          <Bell size={18} color="#0F172A" />
+          {unreadCount > 0 ? (
+            <Text style={styles.bellCount}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+          ) : null}
+        </TouchableOpacity>
+      </View>
       {trackError ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{trackError}</Text>
@@ -308,11 +398,27 @@ export default function TrackScreen() {
           </Text>
         </View>
       ) : null}
+      {liveStatusMessage ? (
+        <View
+          style={[
+            styles.statusWrap,
+            liveStatusMessage.tone === "success" ? styles.statusWrapSuccess : styles.statusWrapInfo,
+          ]}
+        >
+          <Text
+            style={[
+              styles.statusText,
+              liveStatusMessage.tone === "success" ? styles.statusTextSuccess : styles.statusTextInfo,
+            ]}
+          >
+            {liveStatusMessage.text}
+          </Text>
+        </View>
+      ) : null}
       <LiveMap
         segment={effectivePrimarySegment}
         userLocation={userLocation}
         isLocationStale={freshnessUi.isStale}
-        staleLabel={freshnessUi.staleLabel}
         gpsUnavailable={gpsUnavailable}
       />
       <BusStatusPanel
@@ -356,5 +462,55 @@ const styles = StyleSheet.create({
     color: "#475569",
     fontSize: 12,
     textAlign: "center",
+  },
+  statusWrap: {
+    marginHorizontal: 16,
+    marginTop: 4,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  statusWrapInfo: {
+    backgroundColor: "#EFF6FF",
+    borderColor: "#BFDBFE",
+  },
+  statusWrapSuccess: {
+    backgroundColor: "#F0FDF4",
+    borderColor: "#BBF7D0",
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  statusTextInfo: {
+    color: "#1D4ED8",
+  },
+  statusTextSuccess: {
+    color: "#15803D",
+  },
+  bellWrap: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    zIndex: 30,
+  },
+  bellButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E2E8F0",
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  bellCount: {
+    color: "#0F172A",
+    fontWeight: "700",
+    fontSize: 12,
   },
 });

@@ -16,12 +16,13 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, MarkerAnimated, Polyline, PROVIDER_GOOGLE } from "react-native-maps";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import type { TrackingSegment } from "../../../services/parentApi";
@@ -29,11 +30,8 @@ import {
   collectFitCoordinates,
   type MapCoord,
 } from "./trackMapGeometry";
-import { polylineLengthMeters, etaMinutes as calcEtaMinutes } from "../../../lib/geo";
 import { useAnimatedBusMarker } from "../../_hooks/useAnimatedBusMarker";
 import { useRoutePolyline, useRoadSnappedPolyline } from "../../_hooks/useRoutePolyline";
-import BusMarker3D from "../BusMarker3D";
-import FloatingInfoCard from "./FloatingInfoCard";
 import { LIGHT_MAP_STYLE } from "./mapStyles";
 import { normalizeTripStatus, type GeoPoint } from "../../../types/tracking";
 
@@ -93,7 +91,6 @@ type Props = {
   segment: TrackingSegment | null;
   userLocation: MapCoord | null;
   isLocationStale: boolean;
-  staleLabel: string | null;
   /** True when a trip is active but no GPS coordinates have been received yet. */
   gpsUnavailable?: boolean;
 };
@@ -123,7 +120,7 @@ function busStatusLabel(tripStatus: string | null | undefined): string {
   }
 }
 
-export default function LiveMap({ segment, userLocation, isLocationStale, staleLabel, gpsUnavailable = false }: Props) {
+export default function LiveMap({ segment, userLocation, isLocationStale, gpsUnavailable = false }: Props) {
   const mapRef = useRef<MapView | null>(null);
   const lastKnownBusCoordRef = useRef<MapCoord | null>(null);
 
@@ -234,25 +231,8 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
   const markerState = useAnimatedBusMarker(busCoord);
 
   // Polyline splits (completed / remaining / bus-to-next) + deviation distance.
-  const { completedPolyline, remainingPolyline, deviationFromRoute } =
+  const { completedPolyline, remainingPolyline, busToNextLeg, deviationFromRoute } =
     useRoutePolyline(segment, busCoord, roadPolyline);
-
-  const liveRemainingKm = useMemo(
-    () => polylineLengthMeters(remainingPolyline) / 1000,
-    [remainingPolyline]
-  );
-
-  // Only compute a client-side ETA when the road polyline has loaded and the
-  // remaining path is positive. Without the road polyline, `remainingPolyline`
-  // is empty (length = 0) which would produce a misleading "0 min" ETA.
-  // Passing null lets FloatingInfoCard fall back to the backend's etaMinutes.
-  const liveEtaMinutes = useMemo(
-    () =>
-      hasRoadPolyline && liveRemainingKm > 0
-        ? calcEtaMinutes(liveRemainingKm, segment?.speedKmh ?? 0)
-        : null,
-    [hasRoadPolyline, liveRemainingKm, segment?.speedKmh]
-  );
 
   const isOffRoute = useMemo(() => {
     if (
@@ -271,6 +251,22 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
     return nextStop?.stopName ?? segment.pickupStop?.name ?? null;
   }, [segment]);
 
+  const liveStatus = useMemo(() => {
+    const lastFixMs = segment?.lastFixAt ? Date.parse(segment.lastFixAt) : NaN;
+    const ageSec = Number.isFinite(lastFixMs)
+      ? Math.max(0, Math.floor((Date.now() - lastFixMs) / 1000))
+      : null;
+    const isLive = !isLocationStale && ageSec != null && ageSec <= 30;
+    if (isLive) {
+      return { label: "Live", tone: "live" as const };
+    }
+    if (ageSec != null) {
+      const mins = Math.max(1, Math.floor(ageSec / 60));
+      return { label: `Last seen ${mins} min ago`, tone: "stale" as const };
+    }
+    return { label: "Signal unavailable", tone: "stale" as const };
+  }, [segment?.lastFixAt, isLocationStale]);
+
   const fitMapToPoints = useCallback(() => {
     if (!hasAnyPoint) return;
     const coords = collectFitCoordinates({
@@ -288,7 +284,7 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
     } else {
       isProgrammaticMoveRef.current = true;
       map.fitToCoordinates(coords, {
-        edgePadding: { top: 72, right: 28, bottom: 200, left: 28 },
+        edgePadding: { top: 72, right: 28, bottom: 240, left: 28 },
         animated: true,
       });
     }
@@ -413,31 +409,9 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         showsMyLocationButton={false}
         toolbarEnabled={false}
       >
-        {/* ── Base stop-chain polyline — always visible as soon as stops are known.
-            Shows the planned route shape immediately; road-snapped lines render on top. ── */}
-        {!hasRoadPolyline && stopMapCoords.length >= 2 ? (
-          <>
-            <Polyline
-              coordinates={stopMapCoords}
-              strokeColor="#1E3A5F"
-              strokeWidth={7}
-              lineCap="round"
-              lineJoin="round"
-            />
-            <Polyline
-              coordinates={stopMapCoords}
-              strokeColor="#93C5FD"
-              strokeWidth={4}
-              lineCap="round"
-              lineJoin="round"
-              lineDashPattern={[12, 6]}
-            />
-          </>
-        ) : null}
-
-        {/* ── Completed route segment — only rendered once the road-snapped route has loaded ── */}
+        {/* ── Completed route segment (always split by progress) ── */}
         {/* Casing (border underneath for road-like contrast) */}
-        {hasRoadPolyline && completedPolyline.length >= 2 ? (
+        {completedPolyline.length >= 2 ? (
           <Polyline
             coordinates={completedPolyline}
             strokeColor="#CBD5E1"
@@ -447,35 +421,49 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
           />
         ) : null}
         {/* Main completed line — muted to show already-traveled road */}
-        {hasRoadPolyline && completedPolyline.length >= 2 ? (
+        {completedPolyline.length >= 2 ? (
           <Polyline
             coordinates={completedPolyline}
             strokeColor="#94A3B8"
             strokeWidth={4}
             lineCap="round"
             lineJoin="round"
+            lineDashPattern={hasRoadPolyline ? undefined : [8, 6]}
           />
         ) : null}
 
-        {/* ── Remaining route segment — only rendered once the road-snapped route has loaded ── */}
+        {/* ── Remaining route segment (always split by progress) ── */}
         {/* Casing — dark border makes the blue pop on any map style */}
-        {hasRoadPolyline && remainingPolyline.length >= 2 ? (
+        {remainingPolyline.length >= 2 ? (
           <Polyline
             coordinates={remainingPolyline}
-            strokeColor="#1E40AF"
+            strokeColor={hasRoadPolyline ? "#1E40AF" : "#1E3A5F"}
             strokeWidth={8}
             lineCap="round"
             lineJoin="round"
           />
         ) : null}
         {/* Main remaining line — bright Uber-style blue */}
-        {hasRoadPolyline && remainingPolyline.length >= 2 ? (
+        {remainingPolyline.length >= 2 ? (
           <Polyline
             coordinates={remainingPolyline}
-            strokeColor="#3B82F6"
+            strokeColor={hasRoadPolyline ? "#3B82F6" : "#93C5FD"}
             strokeWidth={5}
             lineCap="round"
             lineJoin="round"
+            lineDashPattern={hasRoadPolyline ? undefined : [12, 6]}
+          />
+        ) : null}
+
+        {/* Current leg hint from live bus position to next stop */}
+        {busToNextLeg.length >= 2 ? (
+          <Polyline
+            coordinates={busToNextLeg}
+            strokeColor="#F59E0B"
+            strokeWidth={3}
+            lineCap="round"
+            lineJoin="round"
+            lineDashPattern={[8, 6]}
           />
         ) : null}
 
@@ -525,16 +513,48 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
             })
           : null}
 
-        {/* Animated 3D bus marker */}
+        {/* Live bus marker: AnimatedRegion keeps updates smooth and avoids stale marker frames. */}
         {busCoord ? (
-          <BusMarker3D
-            coordinate={{ latitude: busCoord.latitude, longitude: busCoord.longitude }}
-            heading={segment?.heading ?? markerState.bearingDegRef.current}
-            busNumber={segment?.busNumber ?? ""}
-            speed={segment?.speedKmh ?? 0}
-            isLive={!isLocationStale}
-            status={busStatusLabel(segment?.tripStatus)}
-          />
+          <MarkerAnimated
+            coordinate={markerState.animatedRegion}
+            tracksViewChanges
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={1200}
+            title={segment?.busNumber ? `Bus ${segment.busNumber}` : "School bus"}
+            description={busStatusLabel(segment?.tripStatus)}
+          >
+            <Animated.View
+              style={[
+                styles.busMarkerWrap,
+                {
+                  transform: [
+                    {
+                      rotate: markerState.rotation.interpolate({
+                        inputRange: [-360, 360],
+                        outputRange: ["-360deg", "360deg"],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.busMarkerPin,
+                  isLocationStale ? styles.busMarkerPinStale : styles.busMarkerPinLive,
+                ]}
+              >
+                <MaterialCommunityIcons name="bus-school" size={18} color="#FFFFFF" />
+              </View>
+              {segment?.busNumber ? (
+                <View style={styles.busMarkerBadge}>
+                  <Text style={styles.busMarkerBadgeText} numberOfLines={1}>
+                    {segment.busNumber}
+                  </Text>
+                </View>
+              ) : null}
+            </Animated.View>
+          </MarkerAnimated>
         ) : null}
 
         {/* Parent / user location marker */}
@@ -583,6 +603,17 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         </View>
       ) : null}
 
+      {/* Live freshness indicator for parents: green when GPS is fresh, amber when stale. */}
+      <View style={styles.liveStatusChip} pointerEvents="none">
+        <View
+          style={[
+            styles.liveStatusDot,
+            liveStatus.tone === "live" ? styles.liveStatusDotLive : styles.liveStatusDotStale,
+          ]}
+        />
+        <Text style={styles.liveStatusText}>{liveStatus.label}</Text>
+      </View>
+
       {/* Follow-mode FAB — shown only when follow mode is off */}
       {!followMode ? (
         <Pressable
@@ -615,15 +646,6 @@ export default function LiveMap({ segment, userLocation, isLocationStale, staleL
         </View>
       ) : null}
 
-      {/* Floating info card — positioned above the FAB area */}
-      <FloatingInfoCard
-        segment={segment}
-        isStale={isLocationStale}
-        staleLabel={staleLabel}
-        liveEtaMinutes={liveEtaMinutes}
-        liveRemainingKm={liveRemainingKm}
-        gpsUnavailable={gpsUnavailable}
-      />
     </View>
   );
 }
@@ -713,6 +735,45 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  busMarkerWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  busMarkerPin: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    borderWidth: 2.5,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.26,
+    shadowRadius: 4,
+    elevation: 7,
+  },
+  busMarkerPinLive: {
+    backgroundColor: "#2563EB",
+  },
+  busMarkerPinStale: {
+    backgroundColor: "#64748B",
+  },
+  busMarkerBadge: {
+    marginTop: 4,
+    maxWidth: 70,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  busMarkerBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#0F172A",
   },
   stopRing: {
     width: 26,
@@ -902,5 +963,34 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
     fontSize: 13,
+  },
+  liveStatusChip: {
+    position: "absolute",
+    top: 84,
+    left: 16,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(15,23,42,0.88)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  liveStatusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  liveStatusDotLive: {
+    backgroundColor: "#22C55E",
+  },
+  liveStatusDotStale: {
+    backgroundColor: "#F59E0B",
+  },
+  liveStatusText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });

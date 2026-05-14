@@ -225,9 +225,10 @@ export function useRoutePolyline(
       return { completedPolyline: [], remainingPolyline: basePolyline };
     }
 
-    // Priority 1 — road polyline loaded + live bus position known.
-    // Split at the road point nearest the bus for real-time Uber-style progress.
-    if (hasRoadPolyline && busCoord && isValidCoord(busCoord)) {
+    // Priority 1 — live bus position known.
+    // Split at the nearest point on the active base polyline (road-snapped when
+    // available, otherwise stop-chain) for real-time Uber-style progress.
+    if (busCoord && isValidCoord(busCoord) && basePolyline.length >= 2) {
       const { idx, proj } = nearestSegmentSplit(basePolyline, busCoord);
       // Monotonicity: split can only advance forward, never jump backward due to GPS jitter
       const effectiveIdx = Math.max(maxSplitIdxRef.current, idx);

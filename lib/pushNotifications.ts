@@ -61,6 +61,16 @@ export async function getExpoPushTokenOrNull(): Promise<string | null> {
       vibrationPattern: [0, 250, 250, 250],
       lightColor: "#0F172A",
     });
+    // High-priority alerts for "arriving soon", "arrived", and "left stop".
+    await Notifications.setNotificationChannelAsync("bus-alerts-high", {
+      name: "Bus arrival alerts",
+      importance: Notifications.AndroidImportance.MAX,
+      sound: "default",
+      lockscreenVisibility:
+        Notifications.AndroidNotificationVisibility.PUBLIC,
+      vibrationPattern: [0, 300, 250, 300],
+      lightColor: "#EF4444",
+    });
   }
 
   const { status: existing } = await Notifications.getPermissionsAsync();

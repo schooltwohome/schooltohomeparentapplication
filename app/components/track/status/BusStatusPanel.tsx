@@ -10,13 +10,16 @@ import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import DriverProfile from "./DriverProfile";
 import RideStatsRow from "./RideStatsRow";
 import UpcomingStops from "./UpcomingStops";
-import ParentDirectionsCard from "../ParentDirectionsCard";
 import type { TrackingSegment } from "../../../../services/parentApi";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
 const MIN_HEIGHT = 200;
-const MID_HEIGHT = SCREEN_HEIGHT * 0.45;
-const MAX_HEIGHT = SCREEN_HEIGHT * 0.85;
+const MID_HEIGHT_RATIO = 0.45;
+/**
+ * Keep the expanded sheet below the map's top destination chip.
+ * Equivalent to a BottomSheet `topInset`.
+ */
+const SHEET_TOP_INSET = 120;
 
 type Props = {
   segment: TrackingSegment | null;
@@ -34,16 +37,22 @@ export default function BusStatusPanel({
   userLocation,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const translateY = useSharedValue(SCREEN_HEIGHT - MIN_HEIGHT);
+  const maxHeight = useMemo(() => {
+    // Prevent the sheet from expanding into the top chip area.
+    const maxAllowedByInset = SCREEN_HEIGHT - (insets.top + SHEET_TOP_INSET);
+    // Also cap by ratio so it remains map-first visually.
+    const maxAllowedByRatio = SCREEN_HEIGHT * 0.72;
+    return Math.max(MIN_HEIGHT, Math.min(maxAllowedByInset, maxAllowedByRatio));
+  }, [insets.top]);
+  const midHeight = useMemo(() => maxHeight * MID_HEIGHT_RATIO, [maxHeight]);
+  const collapsedOffset = Math.max(maxHeight - MIN_HEIGHT, 0);
+  const midOffset = Math.max(maxHeight - midHeight, 0);
+  const translateY = useSharedValue(collapsedOffset);
   const context = useSharedValue({ y: 0 });
 
   const snapPoints = useMemo(
-    () => [
-      SCREEN_HEIGHT - MAX_HEIGHT,
-      SCREEN_HEIGHT - MID_HEIGHT,
-      SCREEN_HEIGHT - MIN_HEIGHT,
-    ],
-    []
+    () => [0, midOffset, collapsedOffset],
+    [collapsedOffset, midOffset]
   );
 
   const gesture = Gesture.Pan()
@@ -52,7 +61,7 @@ export default function BusStatusPanel({
     })
     .onUpdate((event) => {
       translateY.value = event.translationY + context.value.y;
-      translateY.value = Math.max(translateY.value, SCREEN_HEIGHT - MAX_HEIGHT);
+      translateY.value = Math.max(0, Math.min(translateY.value, collapsedOffset));
     })
     .onEnd((event) => {
       const targetY = event.translationY + context.value.y;
@@ -68,7 +77,7 @@ export default function BusStatusPanel({
 
   return (
     <GestureDetector gesture={gesture}>
-      <Animated.View style={[styles.container, animatedStyle, { height: MAX_HEIGHT }]}>
+      <Animated.View style={[styles.container, animatedStyle, { height: maxHeight }]}>
         <View style={styles.handleContainer}>
           <View style={styles.handle} />
         </View>
@@ -88,9 +97,8 @@ export default function BusStatusPanel({
           showsVerticalScrollIndicator={false}
           bounces={false}
         >
+          <RideStatsRow segment={segment} />
           <DriverProfile segment={segment} staleLabel={staleLabel} />
-          <RideStatsRow segment={segment} linkedChildrenCount={allSegments.length} />
-          <ParentDirectionsCard segment={segment} userLocation={userLocation} />
           <UpcomingStops segment={segment} />
         </ScrollView>
       </Animated.View>
@@ -101,7 +109,7 @@ export default function BusStatusPanel({
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
     backgroundColor: "#FFFFFF",

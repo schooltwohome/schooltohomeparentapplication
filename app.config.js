@@ -78,6 +78,11 @@ module.exports = ({ config }) => {
     ios: {
       supportsTablet: true,
       ...((config && config.ios) || {}),
+      infoPlist: {
+        ...(((config && config.ios) || {}).infoPlist || {}),
+        NSUserNotificationsUsageDescription:
+          "SchoolToHome sends time-sensitive bus arrival alerts for your child's stop.",
+      },
       config: {
         ...(((config && config.ios) || {}).config || {}),
         googleMapsApiKey: googleMapsIosKey,
@@ -97,6 +102,8 @@ module.exports = ({ config }) => {
       permissions: [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
       ],
 
       package: "com.school2home.schoolToHomeParentApp",

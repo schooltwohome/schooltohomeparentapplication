@@ -24,6 +24,12 @@ export function notificationCategory(
       "driver_assigned",
       "trip_start_reminder",
       "bus_approaching",
+      "trip_started",
+      "bus_on_the_way",
+      "bus_arriving_soon",
+      "bus_arrived",
+      "bus_left_stop",
+      "route_completed",
     ].includes(et)
   ) {
     return "trip";
@@ -81,6 +87,12 @@ const EVENT_TYPE_TO_ROW: Record<string, NotificationRowType> = {
   driver_trip_start: "bus",
   driver_assigned: "bus",
   trip_start_reminder: "update",
+  trip_started: "bus",
+  bus_on_the_way: "bus",
+  bus_arriving_soon: "arrive",
+  bus_arrived: "arrive",
+  bus_left_stop: "delay",
+  route_completed: "update",
 };
 
 /**

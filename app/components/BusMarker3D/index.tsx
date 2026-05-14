@@ -26,7 +26,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Text, View } from "react-native";
+import { Animated, Platform, Text, View } from "react-native";
 import { Callout, Marker } from "react-native-maps";
 import BusSVG from "./BusSVG";
 import { SVG_RENDER_H, SVG_RENDER_W } from "./constants";
@@ -53,6 +53,8 @@ export default function BusMarker3D({
   // ── tracksViewChanges management ─────────────────────────────────────────
   const [tracksViewChanges, setTracksViewChanges] = useState(true);
   const tracksTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldTrackViewChanges = Platform.OS === "android" ? true : tracksViewChanges;
+  const safeHeading = Number.isFinite(heading) ? heading : 0;
 
   const enableTrackingBriefly = useCallback(() => {
     if (tracksTimerRef.current !== null) {
@@ -97,8 +99,9 @@ export default function BusMarker3D({
        * rotation     — rotates with heading so the bus nose points forward.
        */
       flat
-      rotation={heading}
-      tracksViewChanges={tracksViewChanges}
+      rotation={safeHeading}
+      tracksViewChanges={shouldTrackViewChanges}
+      zIndex={1000}
       onPress={onPress}
       accessibilityLabel="School bus marker"
     >

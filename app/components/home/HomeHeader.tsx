@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { Bell } from "lucide-react-native";
-import NotificationModal from "./NotificationModal";
-import { useAppSelector } from "../../../store/hooks";
-import { inferModalType, isStaleTripStartNotification } from "../../../lib/notificationUi";
+import { useAppDispatch, useAppSelector } from "../../../store/hooks";
+import { setPendingPushNavigation } from "../../../store/slices/notificationsSlice";
 
 interface HomeHeaderProps {
   greeting: string;
@@ -14,31 +13,14 @@ interface HomeHeaderProps {
 export default function HomeHeader({
   greeting,
   userName,
-  hasLiveTripFromTracking,
+  hasLiveTripFromTracking: _hasLiveTripFromTracking,
 }: HomeHeaderProps) {
-  const [isModalVisible, setIsModalVisible] = useState(false);
+  const dispatch = useAppDispatch();
   const items = useAppSelector((s) => s.notifications.items);
 
   const unreadCount = useMemo(
     () => items.filter((n) => !n.isRead).length,
     [items]
-  );
-
-  const modalNotifications = useMemo(
-    () =>
-      items
-        .filter(
-          (n) => !isStaleTripStartNotification(n.title, hasLiveTripFromTracking)
-        )
-        .slice(0, 12)
-        .map((n) => ({
-          id: n.id,
-          title: n.title,
-          message: n.message,
-          time: n.time,
-          type: inferModalType(n.title, n.message),
-        })),
-    [items, hasLiveTripFromTracking]
   );
 
   const displayCount = unreadCount > 9 ? "9+" : unreadCount.toString();
@@ -51,7 +33,10 @@ export default function HomeHeader({
       </View>
       <TouchableOpacity
         style={styles.notificationBtn}
-        onPress={() => setIsModalVisible(true)}
+        onPress={() => {
+          // Open the full notifications history screen from the bell.
+          dispatch(setPendingPushNavigation({ tab: "alerts" }));
+        }}
       >
         <Bell size={24} color="#0F172A" hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} />
         {unreadCount > 0 && (
@@ -61,11 +46,6 @@ export default function HomeHeader({
         )}
       </TouchableOpacity>
 
-      <NotificationModal
-        isVisible={isModalVisible}
-        onClose={() => setIsModalVisible(false)}
-        notifications={modalNotifications}
-      />
     </View>
   );
 }

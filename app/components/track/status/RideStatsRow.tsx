@@ -2,34 +2,42 @@ import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { Activity, Clock, Navigation, Users } from "lucide-react-native";
 import type { TrackingSegment } from "../../../../services/parentApi";
+import { normalizeTripStatus } from "../../../../types/tracking";
 
 function formatStatus(segment: TrackingSegment | null): string {
-  const s = segment?.tripStatus;
-  if (!s) return "—";
-  if (s === "on_going") return "En route";
-  if (s === "scheduled") return "Scheduled";
-  if (s === "completed") return "Done";
-  if (s === "cancelled") return "Off";
-  return s.replace(/_/g, " ");
+  if (!segment) return "—";
+  if (segment.hasReachedPickup) return "Arrived";
+  const status = normalizeTripStatus(segment.tripStatus);
+  if (status === "started") return "En route";
+  if (status === "returning") return "Returning";
+  if (status === "reached_school") return "At school";
+  if (status === "completed") return "Completed";
+  return "Not started";
 }
 
 type Props = {
   segment: TrackingSegment | null;
-  linkedChildrenCount: number;
 };
 
-export default function RideStatsRow({ segment, linkedChildrenCount }: Props) {
-  const dist =
-    segment?.distanceToPickupKm != null
+export default function RideStatsRow({ segment }: Props) {
+  const status = formatStatus(segment);
+  const hasArrived =
+    segment?.hasReachedPickup === true ||
+    (typeof segment?.distanceToPickupKm === "number" && segment.distanceToPickupKm <= 0.05);
+
+  const distValue = hasArrived
+    ? "0.0"
+    : segment?.distanceToPickupKm != null && Number.isFinite(segment.distanceToPickupKm)
       ? segment.distanceToPickupKm.toFixed(1)
       : "—";
-  const eta =
-    segment?.etaMinutes != null && segment.etaMinutes > 0
+  const etaValue = hasArrived
+    ? "Arrived"
+    : segment?.etaMinutes != null && Number.isFinite(segment.etaMinutes) && segment.etaMinutes >= 0
       ? String(segment.etaMinutes)
       : "—";
-  const speed =
-    segment?.speedKmh != null && segment.speedKmh > 0
-      ? `${Math.round(segment.speedKmh)}`
+  const speedValue =
+    segment?.speedKmh != null && Number.isFinite(segment.speedKmh)
+      ? `${Math.max(0, Math.round(segment.speedKmh))}`
       : "—";
 
   return (
@@ -37,32 +45,29 @@ export default function RideStatsRow({ segment, linkedChildrenCount }: Props) {
       <View style={styles.statBox}>
         <Activity size={20} color="#10B981" />
         <Text style={styles.statValue} numberOfLines={2}>
-          {formatStatus(segment)}
+          {status}
         </Text>
         <Text style={styles.statLabel}>Trip</Text>
       </View>
 
       <View style={styles.statBox}>
         <Navigation size={20} color="#64748B" />
-        <Text style={styles.statValue}>{dist}</Text>
+        <Text style={styles.statValue}>{distValue}</Text>
         <Text style={styles.statLabel}>km to stop</Text>
-        {speed !== "—" ? (
-          <Text style={styles.micro}>{speed} km/h</Text>
-        ) : null}
       </View>
 
       <View style={styles.statBox}>
         <Clock size={20} color="#F59E0B" />
-        <Text style={styles.statValue}>{eta}</Text>
-        <Text style={styles.statLabel}>min ETA</Text>
+        <Text style={styles.statValue}>{etaValue}</Text>
+        <Text style={styles.statLabel}>{etaValue === "Arrived" ? "Status" : "min ETA"}</Text>
       </View>
 
       <View style={styles.statBox}>
         <Users size={20} color="#8B5CF6" />
         <Text style={styles.statValue}>
-          {linkedChildrenCount > 0 ? String(linkedChildrenCount) : "—"}
+          {speedValue === "—" ? "—" : `${speedValue} km/h`}
         </Text>
-        <Text style={styles.statLabel}>linked</Text>
+        <Text style={styles.statLabel}>Speed</Text>
       </View>
     </View>
   );
@@ -96,10 +101,5 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 2,
     textAlign: "center",
-  },
-  micro: {
-    fontSize: 10,
-    color: "#94A3B8",
-    marginTop: 4,
   },
 });
